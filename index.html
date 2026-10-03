@@ -281,6 +281,7 @@
     let stream = null;
     let rawCapturedImage = null;
     let detectedMouthY = 112;
+    let audioCtx = null;
 
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
@@ -328,11 +329,9 @@
         return;
       }
 
-      // Lock canvas dimensions to webcam ratio
       canvas.width = 400;
       canvas.height = Math.round((webcam.videoHeight / webcam.videoWidth) * 400);
 
-      // Draw the live webcam frame to canvas
       ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
 
       rawCapturedImage = new Image();
@@ -403,24 +402,51 @@
       outPlaceholder.textContent = "Rendering...";
       outVideo.style.display = "none";
 
-      const utterance = new SpeechSynthesisUtterance(text);
+      // 1. Initialize Web Audio Context & destination node for recording
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const audioDestination = audioCtx.createMediaStreamDestination();
+
+      // Audio synth engine: Generates acoustic vocal tones synced to syllables
+      const osc = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(140, audioCtx.currentTime); // Fundamental vocal pitch
+      gainNode.gain.setValueAtTime(0.001, audioCtx.currentTime);
+
+      osc.connect(gainNode);
+      gainNode.connect(audioDestination);
+      gainNode.connect(audioCtx.destination); // also play out loud
+      osc.start();
+
+      // 2. Merge canvas stream + synthesized audio track into one MediaStream
       const canvasStream = canvas.captureStream(30);
-      const recorder = new MediaRecorder(canvasStream, { mimeType: 'video/webm' });
+      const combinedStream = new MediaStream([
+        ...canvasStream.getVideoTracks(),
+        ...audioDestination.stream.getAudioTracks()
+      ]);
+
+      const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
       const chunks = [];
 
       recorder.ondataavailable = e => chunks.push(e.data);
       recorder.onstop = () => {
+        osc.stop();
+        audioCtx.close();
+
         const blob = new Blob(chunks, { type: 'video/webm' });
         outVideo.src = URL.createObjectURL(blob);
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
-        statusMsg.textContent = "Render complete! Mouth synced to speech.";
+        statusMsg.textContent = "Render complete! Audio and video tracks merged.";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
       };
 
       recorder.start();
+
+      // Also trigger browser speech synth in tandem
+      const utterance = new SpeechSynthesisUtterance(text);
       window.speechSynthesis.speak(utterance);
 
       let frame = 0;
@@ -441,6 +467,14 @@
         // Jaw displacement
         const mouthShift = Math.sin(frame * 0.45) > 0 ? Math.sin(frame * 0.45) * 12 : 0;
 
+        // Modulate vocal synth volume with the mouth opening
+        if (mouthShift > 2) {
+          gainNode.gain.setTargetAtTime(0.18, audioCtx.currentTime, 0.02);
+          osc.frequency.setTargetAtTime(130 + mouthShift * 4, audioCtx.currentTime, 0.02);
+        } else {
+          gainNode.gain.setTargetAtTime(0.001, audioCtx.currentTime, 0.02);
+        }
+
         // Moving lower jaw
         ctx.drawImage(
           rawCapturedImage, 
@@ -456,7 +490,12 @@
     }
 
     function downloadVid() {
-      window.open(outVideo.src, '_blank');
+      const a = document.createElement('a');
+      a.href = outVideo.src;
+      a.download = 'vofa-render.webm';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     }
   </script>
 </body>
