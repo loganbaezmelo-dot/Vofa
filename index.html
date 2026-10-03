@@ -121,13 +121,17 @@
       justify-content: center;
       overflow: hidden;
       position: relative;
-      touch-action: none;
+      touch-action: none; /* Prevents mobile browser from dragging page while drawing */
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     video, canvas {
       width: 100%;
       height: 100%;
       object-fit: cover;
+      display: block;
+      touch-action: none;
     }
 
     #renderCanvas {
@@ -253,7 +257,7 @@
   <script>
     let stream = null;
     let rawCapturedImage = null;
-    let mouthPath = []; // Stores user-drawn touch points
+    let mouthPath = [];
     let isDrawing = false;
     let maskCompleted = false;
 
@@ -376,8 +380,9 @@
         return;
       }
 
+      // Lock internal resolution directly to the displayed 16:9 view
       canvas.width = 400;
-      canvas.height = Math.round((webcam.videoHeight / webcam.videoWidth) * 400);
+      canvas.height = 225;
       ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
 
       rawCapturedImage = new Image();
@@ -388,7 +393,7 @@
 
         snapBtn.textContent = 'Retake Photo';
         snapBtn.onclick = () => location.reload();
-        statusMsg.textContent = "✏️ Use your finger to draw a loop around your mouth/lips!";
+        statusMsg.textContent = "✏️ Use your finger to draw a circle around your mouth!";
       };
       rawCapturedImage.src = canvas.toDataURL('image/jpeg', 0.95);
 
@@ -398,31 +403,43 @@
       }
     }
 
+    // ACCURATE MOBILE TOUCH & POINTER COORDINATE RESOLVER
     function getCanvasCoords(e) {
       const rect = canvas.getBoundingClientRect();
+      let clientX = e.clientX;
+      let clientY = e.clientY;
+
+      if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      }
+
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
+
       return {
-        x: (e.clientX - rect.left) * scaleX,
-        y: (e.clientY - rect.top) * scaleY
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
       };
     }
 
-    // DRAWING MOUTH MASK WITH TOUCH / FINGER
-    canvas.addEventListener('pointerdown', (e) => {
+    // Touch event binders with passive:false to kill mobile scroll drift
+    function onStart(e) {
       if (!rawCapturedImage) return;
+      e.preventDefault();
       isDrawing = true;
       mouthPath = [getCanvasCoords(e)];
       drawUserPath();
-    });
+    }
 
-    canvas.addEventListener('pointermove', (e) => {
+    function onMove(e) {
       if (!isDrawing) return;
+      e.preventDefault();
       mouthPath.push(getCanvasCoords(e));
       drawUserPath();
-    });
+    }
 
-    window.addEventListener('pointerup', () => {
+    function onEnd(e) {
       if (!isDrawing) return;
       isDrawing = false;
       if (mouthPath.length > 5) {
@@ -431,7 +448,15 @@
         statusMsg.textContent = "Mouth area locked! Ready to generate.";
         drawUserPath(true);
       }
-    });
+    }
+
+    canvas.addEventListener('touchstart', onStart, { passive: false });
+    canvas.addEventListener('touchmove', onMove, { passive: false });
+    canvas.addEventListener('touchend', onEnd, { passive: false });
+
+    canvas.addEventListener('mousedown', onStart);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
 
     function drawUserPath(isDone = false) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -451,7 +476,7 @@
       ctx.stroke();
 
       if (isDone) {
-        ctx.fillStyle = 'rgba(236, 72, 153, 0.18)';
+        ctx.fillStyle = 'rgba(236, 72, 153, 0.2)';
         ctx.fill();
       }
     }
@@ -462,7 +487,7 @@
       genBtn.disabled = true;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(rawCapturedImage, 0, 0, canvas.width, canvas.height);
-      statusMsg.textContent = "Draw a loop around your mouth/lips!";
+      statusMsg.textContent = "Draw a circle around your mouth!";
     }
 
     async function executeSynthesis() {
@@ -475,7 +500,7 @@
       outPlaceholder.textContent = "Synthesizing...";
       outVideo.style.display = "none";
 
-      // 1. WIPE OUT DRAWN PINK LINES BEFORE RECORDING STARTS
+      // 1. WIPE PREVIEW LINES BEFORE RECORDING STARTS
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(rawCapturedImage, 0, 0, canvas.width, canvas.height);
 
@@ -518,7 +543,6 @@
 
       recorder.start();
 
-      // Find center bounding box of drawn mouth
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       mouthPath.forEach(pt => {
         if (pt.x < minX) minX = pt.x;
@@ -593,7 +617,6 @@
 
       playPhoneme(0);
 
-      // Custom path clip render loop (Only your drawn mouth opens and closes!)
       function renderLoop() {
         if (!isRecording && currentMouthShift < 0.2) return;
 
@@ -601,10 +624,10 @@
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 1. Draw entire background & base face unchanged
+        // 1. Draw static portrait
         ctx.drawImage(rawCapturedImage, 0, 0, canvas.width, canvas.height);
 
-        // 2. If opening, fill inner cavity inside the drawn loop
+        // 2. Inner cavity inside your drawn loop
         if (currentMouthShift > 1) {
           ctx.save();
           ctx.beginPath();
@@ -615,20 +638,17 @@
           ctx.closePath();
           ctx.clip();
 
-          // Dark mouth cavity
           ctx.fillStyle = '#220407';
           ctx.fill();
 
-          // Natural teeth strip
           ctx.fillStyle = '#f1f5f9';
-          ctx.fillRect(minX + 8, mouthCenterY - 2, (maxX - minX) - 16, Math.min(2.5, currentMouthShift));
+          ctx.fillRect(minX + 6, mouthCenterY - 2, (maxX - minX) - 12, Math.min(2.5, currentMouthShift));
           ctx.restore();
         }
 
-        // 3. Clip ONLY the lower half of your custom drawn loop and translate it downward
+        // 3. Translate only lower half of drawn area
         ctx.save();
         ctx.beginPath();
-        // Mask: intersection of the user drawn loop and points below mouthCenterY
         ctx.rect(0, mouthCenterY, canvas.width, canvas.height - mouthCenterY);
         ctx.clip();
 
@@ -640,7 +660,6 @@
         ctx.closePath();
         ctx.clip();
 
-        // Repaint lower half of the drawn mouth translated down
         ctx.drawImage(
           rawCapturedImage,
           0, 0, canvas.width, canvas.height,
