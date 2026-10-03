@@ -110,7 +110,6 @@
       font-weight: 700;
     }
 
-    /* Auto-adapts to vertical or horizontal camera feeds */
     .view-box {
       width: 100%;
       min-height: 240px;
@@ -381,7 +380,6 @@
         return;
       }
 
-      // PRESERVES EXACT NATIVE ASPECT RATIO - NO SQUASHING
       const naturalW = webcam.videoWidth;
       const naturalH = webcam.videoHeight;
       canvas.width = naturalW;
@@ -396,7 +394,7 @@
 
         snapBtn.textContent = 'Retake Photo';
         snapBtn.onclick = () => location.reload();
-        statusMsg.textContent = "✏️ Draw a loop around your mouth directly on your face!";
+        statusMsg.textContent = "✏️ Draw a loop around your lower lip / mouth!";
       };
       rawCapturedImage.src = canvas.toDataURL('image/jpeg', 0.95);
 
@@ -406,7 +404,6 @@
       }
     }
 
-    // ACCURATE 1:1 COORDINATES MATCHING THE DRAWN CANVAS
     function getCanvasCoords(e) {
       const rect = canvas.getBoundingClientRect();
       let clientX = e.clientX;
@@ -537,7 +534,7 @@
         outVideo.src = URL.createObjectURL(blob);
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
-        statusMsg.textContent = "Video generated with isolated mouth pixels!";
+        statusMsg.textContent = "Video generated with smooth mouth animation!";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
@@ -552,7 +549,9 @@
         if (pt.y < minY) minY = pt.y;
         if (pt.y > maxY) maxY = pt.y;
       });
-      const mouthCenterY = (minY + maxY) / 2;
+      
+      // Seam splits naturally across upper 40% of the drawn selection
+      const mouthSeamY = minY + (maxY - minY) * 0.45;
       const mouthHeight = maxY - minY;
 
       const phonemes = parseTextToPhonemes(text);
@@ -578,23 +577,23 @@
           const osc = audioCtx.createOscillator();
           osc.type = 'sawtooth';
 
-          const pitch = 145 + Math.sin(index * 0.7) * 15;
+          const pitch = 135 + Math.sin(index * 0.5) * 12;
           osc.frequency.setValueAtTime(pitch, audioCtx.currentTime);
-          osc.frequency.linearRampToValueAtTime(pitch * 0.92, audioCtx.currentTime + dur);
+          osc.frequency.linearRampToValueAtTime(pitch * 0.95, audioCtx.currentTime + dur);
 
           const f1 = audioCtx.createBiquadFilter();
           f1.type = 'bandpass';
           f1.frequency.setValueAtTime(pData.f1, audioCtx.currentTime);
-          f1.Q.setValueAtTime(4.5, audioCtx.currentTime);
+          f1.Q.setValueAtTime(3.5, audioCtx.currentTime);
 
           const f2 = audioCtx.createBiquadFilter();
           f2.type = 'bandpass';
           f2.frequency.setValueAtTime(pData.f2, audioCtx.currentTime);
-          f2.Q.setValueAtTime(5.5, audioCtx.currentTime);
+          f2.Q.setValueAtTime(4.5, audioCtx.currentTime);
 
           const gain = audioCtx.createGain();
           gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
-          gain.gain.linearRampToValueAtTime(0.28, audioCtx.currentTime + 0.02);
+          gain.gain.linearRampToValueAtTime(0.24, audioCtx.currentTime + 0.02);
           gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + dur);
 
           osc.connect(f1);
@@ -608,8 +607,7 @@
           osc.start();
           osc.stop(audioCtx.currentTime + dur);
 
-          // Proportional mouth drop matching the drawn mouth scale
-          targetMouthShift = Math.round(pData.open * (mouthHeight * 0.45));
+          targetMouthShift = Math.round(pData.open * (mouthHeight * 0.32));
         } else {
           targetMouthShift = 0;
         }
@@ -631,7 +629,7 @@
         // 1. Static base face
         ctx.drawImage(rawCapturedImage, 0, 0, canvas.width, canvas.height);
 
-        // 2. Inner cavity inside your drawn loop
+        // 2. Realistic dark-red mouth cavity (no solid black mustache block, no chalk bar!)
         if (currentMouthShift > 1) {
           ctx.save();
           ctx.beginPath();
@@ -642,18 +640,20 @@
           ctx.closePath();
           ctx.clip();
 
-          ctx.fillStyle = '#220407';
-          ctx.fill();
+          // Smooth deep mouth cavity shading
+          const mouthGrad = ctx.createLinearGradient(0, mouthSeamY, 0, mouthSeamY + currentMouthShift + 4);
+          mouthGrad.addColorStop(0, '#1c0306');
+          mouthGrad.addColorStop(1, '#3b0a10');
+          ctx.fillStyle = mouthGrad;
+          ctx.fillRect(minX, mouthSeamY, maxX - minX, currentMouthShift + 6);
 
-          ctx.fillStyle = '#f1f5f9';
-          ctx.fillRect(minX + (maxX - minX) * 0.15, mouthCenterY - 2, (maxX - minX) * 0.7, Math.min(3, currentMouthShift));
           ctx.restore();
         }
 
-        // 3. Translate only lower half of drawn area
+        // 3. Translate only the lower section of your drawn mouth downward
         ctx.save();
         ctx.beginPath();
-        ctx.rect(0, mouthCenterY, canvas.width, canvas.height - mouthCenterY);
+        ctx.rect(0, mouthSeamY, canvas.width, canvas.height - mouthSeamY);
         ctx.clip();
 
         ctx.beginPath();
