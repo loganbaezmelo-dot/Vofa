@@ -186,16 +186,15 @@
     }
 
     .token-display {
-      font-size: 1.8rem;
+      font-size: 1.6rem;
       font-weight: 900;
-      letter-spacing: 6px;
+      letter-spacing: 2px;
       color: #38bdf8;
       background: #06070a;
       border: 1px solid #1e293b;
       border-radius: 8px;
       padding: 10px;
       margin: 8px 0;
-      font-family: monospace;
     }
 
     .speech-bar {
@@ -250,7 +249,7 @@
       border: 1px solid #1e293b;
       border-radius: 6px;
       padding: 8px 12px;
-      font-size: 0.8rem;
+      font-size: 0.85rem;
       color: #94a3b8;
     }
 
@@ -386,26 +385,32 @@
     <div class="panel">
       <h2>Step 2: Real Voice Training (2 Clips)</h2>
 
-      <!-- Clip 1: Dynamic Random Number Challenge -->
+      <!-- Clip 1: Dynamic Rhythmic Vocal Bursts Challenge -->
       <div class="audio-card">
         <div style="font-weight: 700; font-size: 0.85rem; color: #38bdf8;">Clip 1: Dynamic Liveness Challenge (Anti-Spoofing)</div>
         <div class="prompt-box">
-          Tap the mic and speak these <b style="color: #f472b6;">4 random digits</b> out loud:
-          <div class="token-display" id="tokenDisplay">----</div>
-          <button onclick="generateNewLivenessChallenge()" style="background: #1e293b; padding: 4px 8px; font-size: 0.75rem; flex: none;">🎲 New Numbers</button>
+          Liveness instructions:
+          <div class="token-display" id="tokenDisplay">Say random numbers 6 times</div>
+          <button onclick="generateNewLivenessChallenge()" style="background: #1e293b; padding: 4px 8px; font-size: 0.75rem; flex: none;">🎲 New Count</button>
         </div>
 
         <div class="speech-bar">
-          <input type="text" id="liveTranscript" readonly placeholder="Tap mic, speak the 4 numbers..." />
+          <input type="text" id="liveTranscript" readonly placeholder="Tap the mic icon and speak each number..." />
           <button class="mic-icon-btn" id="micIconBtn" onclick="toggleSpeechListener()" title="Click to record">🎙️</button>
         </div>
 
-        <div class="heard-box" id="heardDisplay">
-          Live digits heard: <b>(waiting for audio...)</b>
+        <div class="vu-container">
+          <div class="vu-bar" id="clip1VuBar"></div>
         </div>
 
+        <div class="heard-box" id="heardDisplay">
+          Live vocal bursts detected: <b>0 / 6</b>
+        </div>
+
+        <audio id="phraseAudioPlayback" controls style="display:none; width:100%; height:32px; margin-top:4px;"></audio>
+
         <div class="checklist">
-          <span id="checkPhrase">❌ Liveness pending (Read the 4 digits)</span>
+          <span id="checkPhrase">❌ Liveness pending (Speak distinct number bursts)</span>
         </div>
       </div>
 
@@ -478,12 +483,17 @@
     let voicePeakCount = 0;
     let lastPeakTime = 0;
 
-    // Clip 1 Dynamic Liveness Token State
-    let targetDigits = "";
+    // Clip 1 Dynamic Rhythmic Bursts State
+    let targetBurstCount = 6;
     let isListeningSpeech = false;
-    let recognition = null;
-    let actualSpokenWords = "";
+    let phraseMediaRecorder = null;
+    let phraseChunks = [];
+    let phraseAudioBlob = null;
     let phraseVerified = false;
+    let clip1AudioContext = null;
+    let clip1Analyser = null;
+    let detectedBursts = 0;
+    let lastBurstMs = 0;
 
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
@@ -507,8 +517,10 @@
     const checkTime = document.getElementById('checkTime');
     const checkWords = document.getElementById('checkWords');
     const bankVuBar = document.getElementById('bankVuBar');
+    const clip1VuBar = document.getElementById('clip1VuBar');
     const liveTranscript = document.getElementById('liveTranscript');
     const micIconBtn = document.getElementById('micIconBtn');
+    const phraseAudioPlayback = document.getElementById('phraseAudioPlayback');
     const heardDisplay = document.getElementById('heardDisplay');
     const tokenDisplay = document.getElementById('tokenDisplay');
 
@@ -588,11 +600,14 @@
       return queue;
     }
 
+    // Dynamic challenge counts between 5 and 7
     function generateNewLivenessChallenge() {
-      targetDigits = String(Math.floor(1000 + Math.random() * 9000));
-      tokenDisplay.textContent = targetDigits.split('').join('  ');
+      const options = [5, 6, 7];
+      targetBurstCount = options[Math.floor(Math.random() * options.length)];
+      tokenDisplay.textContent = `Say random number(s) ${targetBurstCount} times`;
       checkPhrase.className = "";
-      checkPhrase.textContent = `❌ Liveness challenge: Say numbers "${targetDigits.split('').join(' - ')}"`;
+      checkPhrase.textContent = `❌ Speak ${targetBurstCount} distinct number bursts with natural pauses.`;
+      heardDisplay.innerHTML = `Live vocal bursts detected: <b>0 / ${targetBurstCount}</b>`;
     }
     generateNewLivenessChallenge();
 
@@ -772,138 +787,124 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    const WORD_TO_DIGIT = {
-      'zero': '0', 'oh': '0', '0': '0',
-      'one': '1', 'won': '1', '1': '1',
-      'two': '2', 'to': '2', 'too': '2', '2': '2',
-      'three': '3', 'tree': '3', '3': '3',
-      'four': '4', 'for': '4', 'fore': '4', '4': '4',
-      'five': '5', '5': '5',
-      'six': '6', '6': '6',
-      'seven': '7', '7': '7',
-      'eight': '8', 'ate': '8', '8': '8',
-      'nine': '9', '9': '9'
-    };
+    // CLIP 1: PURE LOCAL CADENCE & BURST ANALYZER (NO GOOGLE CLOUD NEEDED)
+    async function toggleSpeechListener() {
+      if (!isListeningSpeech) {
+        try {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          clip1AudioContext = new AudioContext();
+          if (clip1AudioContext.state === 'suspended') await clip1AudioContext.resume();
 
-    // Extracts normalized digit strings: e.g. "one two four seven" -> "1247"
-    function extractDigitsFromSpeech(raw) {
-      if (!raw) return "";
-      const tokens = raw.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
-      let found = "";
-      tokens.forEach(tok => {
-        if (WORD_TO_DIGIT[tok]) {
-          found += WORD_TO_DIGIT[tok];
-        } else {
-          for (let ch of tok) {
-            if (WORD_TO_DIGIT[ch]) found += WORD_TO_DIGIT[ch];
-          }
-        }
-      });
-      return found;
-    }
+          const micStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+          });
 
-    function checkExactDigitsMatch(heardDigits, target) {
-      if (heardDigits === target) return true;
-      // Allow passing if 3 of 4 match in sequence
-      if (heardDigits.length >= 3 && target.includes(heardDigits)) return true;
-      if (heardDigits.length === 4) {
-        let diffs = 0;
-        for (let i = 0; i < 4; i++) {
-          if (heardDigits[i] !== target[i]) diffs++;
-        }
-        return diffs <= 1;
-      }
-      return false;
-    }
+          const source = clip1AudioContext.createMediaStreamSource(micStream);
+          clip1Analyser = clip1AudioContext.createAnalyser();
+          clip1Analyser.fftSize = 256;
+          clip1Analyser.smoothingTimeConstant = 0.2;
+          source.connect(clip1Analyser);
 
-    // CLIP 1: SYNCHRONOUS GESTURE-BOUND SPEECH RECOGNITION (ANDROID COMPATIBLE)
-    function toggleSpeechListener() {
-      if (isListeningSpeech) {
-        stopSpeechListener();
-        return;
-      }
+          phraseChunks = [];
+          phraseVerified = false;
+          detectedBursts = 0;
+          lastBurstMs = 0;
 
-      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRec) {
-        alert("Web Speech API not supported on this browser.");
-        return;
-      }
+          phraseMediaRecorder = new MediaRecorder(micStream);
+          phraseMediaRecorder.ondataavailable = e => {
+            if (e.data.size > 0) phraseChunks.push(e.data);
+          };
 
-      // Synchronous creation & start on tap event
-      recognition = new SpeechRec();
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
+          phraseMediaRecorder.onstop = () => {
+            micStream.getTracks().forEach(t => t.stop());
+            if (clip1AudioContext) clip1AudioContext.close();
+            clip1VuBar.style.width = '0%';
 
-      actualSpokenWords = "";
-      phraseVerified = false;
-      isListeningSpeech = true;
+            if (phraseChunks.length > 0) {
+              phraseAudioBlob = new Blob(phraseChunks, { type: 'audio/webm' });
+              phraseAudioPlayback.src = URL.createObjectURL(phraseAudioBlob);
+              phraseAudioPlayback.style.display = 'block';
+            }
+          };
 
-      micIconBtn.classList.add('listening');
-      liveTranscript.value = "";
-      liveTranscript.placeholder = `Say: ${targetDigits.split('').join(' ')}`;
-      heardDisplay.innerHTML = `Live digits heard: <b>Listening to speech...</b>`;
-      checkPhrase.className = "";
-      checkPhrase.textContent = `🎙️ Say these numbers out loud: ${targetDigits.split('').join(' - ')}`;
-
-      recognition.onresult = (e) => {
-        let transcript = '';
-        for (let i = 0; i < e.results.length; i++) {
-          transcript += e.results[i][0].transcript + ' ';
-        }
-        actualSpokenWords = transcript.trim();
-        const extracted = extractDigitsFromSpeech(actualSpokenWords);
-
-        liveTranscript.value = actualSpokenWords;
-        heardDisplay.innerHTML = `Live heard: <b style="color:#38bdf8;">"${actualSpokenWords}"</b> (digits: ${extracted || 'none'})`;
-
-        if (checkExactDigitsMatch(extracted, targetDigits)) {
-          phraseVerified = true;
-          checkPhrase.className = "passed";
-          checkPhrase.textContent = `✅ Live Human Verified! Spoke matching digits [${targetDigits}]`;
-          stopSpeechListener();
-        }
-      };
-
-      recognition.onerror = (e) => {
-        heardDisplay.innerHTML = `Speech status: <b style="color:#f87171;">${e.error}</b>`;
-      };
-
-      recognition.onend = () => {
-        isListeningSpeech = false;
-        micIconBtn.classList.remove('listening');
-
-        const extracted = extractDigitsFromSpeech(actualSpokenWords);
-        if (phraseVerified || checkExactDigitsMatch(extracted, targetDigits)) {
-          phraseVerified = true;
-          checkPhrase.className = "passed";
-          checkPhrase.textContent = `✅ Live Human Verified! Spoke matching digits [${targetDigits}]`;
-          micIconBtn.style.background = "#15803d";
-          micIconBtn.style.borderColor = "#4ade80";
-          micIconBtn.disabled = true;
-          voiceRecBtn.disabled = false;
-          voiceRecBtn.textContent = "🎙️ Start Voice Training";
-          voiceStatus.textContent = "Anti-spoofing challenge passed! Clip 2 unlocked.";
-          checkReadyToGenerate();
-        } else {
+          phraseMediaRecorder.start();
+          isListeningSpeech = true;
+          micIconBtn.classList.add('listening');
+          liveTranscript.value = `Listening! Say ${targetBurstCount} numbers clearly...`;
+          heardDisplay.innerHTML = `Live vocal bursts detected: <b style="color:#38bdf8;">0 / ${targetBurstCount}</b>`;
           checkPhrase.className = "";
-          checkPhrase.textContent = `❌ Verification failed. Heard digits "${extracted || 'none'}" instead of "${targetDigits}". Try again!`;
-        }
-      };
+          checkPhrase.textContent = `🎙️ Speak numbers one by one (Pause between each)...`;
 
-      try {
-        recognition.start();
-      } catch (err) {
-        console.error("Recognition start failed:", err);
+          const buffer = new Uint8Array(clip1Analyser.frequencyBinCount);
+          function trackVocalBursts() {
+            if (!isListeningSpeech) return;
+            clip1Analyser.getByteFrequencyData(buffer);
+
+            let sum = 0;
+            for (let i = 0; i < buffer.length; i++) sum += buffer[i];
+            let avg = sum / buffer.length;
+
+            const vuPct = Math.min(100, Math.max(0, (avg / 65) * 100));
+            clip1VuBar.style.width = `${vuPct}%`;
+
+            const now = performance.now();
+            // 0.07 threshold + 260ms minimum spacing between digits prevents tap/breath false triggers
+            if (avg > 25 && now - lastBurstMs > 280) {
+              lastBurstMs = now;
+              detectedBursts++;
+
+              heardDisplay.innerHTML = `Live vocal bursts detected: <b style="color:#38bdf8;">${detectedBursts} / ${targetBurstCount}</b>`;
+              liveTranscript.value = `Detected burst ${detectedBursts} of ${targetBurstCount}...`;
+
+              if (detectedBursts === targetBurstCount) {
+                phraseVerified = true;
+                setTimeout(() => stopSpeechListener(true), 450);
+                return;
+              }
+            }
+
+            requestAnimationFrame(trackVocalBursts);
+          }
+          trackVocalBursts();
+
+          // Auto-stop after 8s
+          setTimeout(() => {
+            if (isListeningSpeech) stopSpeechListener(false);
+          }, 8500);
+
+        } catch (e) {
+          alert("Microphone permission denied!");
+        }
+      } else {
+        stopSpeechListener(false);
       }
     }
 
-    function stopSpeechListener() {
-      if (recognition) {
-        try { recognition.stop(); } catch(e) {}
-      }
+    function stopSpeechListener(passed = false) {
       isListeningSpeech = false;
       micIconBtn.classList.remove('listening');
+
+      if (phraseMediaRecorder && phraseMediaRecorder.state !== 'inactive') {
+        phraseMediaRecorder.stop();
+      }
+
+      if (passed || detectedBursts === targetBurstCount) {
+        phraseVerified = true;
+        checkPhrase.className = "passed";
+        checkPhrase.textContent = `✅ Liveness Verified! Completed ${targetBurstCount} vocal bursts cleanly.`;
+        liveTranscript.value = `Passed ${targetBurstCount}/${targetBurstCount} bursts!`;
+        micIconBtn.style.background = "#15803d";
+        micIconBtn.style.borderColor = "#4ade80";
+        micIconBtn.disabled = true;
+        voiceRecBtn.disabled = false;
+        voiceRecBtn.textContent = "🎙️️ Start Voice Training";
+        voiceStatus.textContent = "Anti-spoofing challenge passed! Clip 2 unlocked.";
+        checkReadyToGenerate();
+      } else {
+        checkPhrase.className = "";
+        checkPhrase.textContent = `❌ Detected ${detectedBursts}/${targetBurstCount} bursts. Speak clearly and pause between each number!`;
+        liveTranscript.value = `Only got ${detectedBursts}/${targetBurstCount} bursts.`;
+      }
     }
 
     // CLIP 2: VOICE TRAINING RECORDING (30s minimum)
