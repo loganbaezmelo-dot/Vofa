@@ -396,15 +396,13 @@
         </div>
 
         <div class="speech-bar">
-          <input type="text" id="liveTranscript" readonly placeholder="Tap mic, speak numbers..." />
+          <input type="text" id="liveTranscript" readonly placeholder="Tap mic, speak the 4 numbers..." />
           <button class="mic-icon-btn" id="micIconBtn" onclick="toggleSpeechListener()" title="Click to record">🎙️</button>
         </div>
 
         <div class="heard-box" id="heardDisplay">
           Live digits heard: <b>(waiting for audio...)</b>
         </div>
-
-        <audio id="phraseAudioPlayback" controls style="display:none; width:100%; height:32px; margin-top:4px;"></audio>
 
         <div class="checklist">
           <span id="checkPhrase">❌ Liveness pending (Read the 4 digits)</span>
@@ -480,13 +478,12 @@
     let voicePeakCount = 0;
     let lastPeakTime = 0;
 
-    // Clip 1 Dynamic Liveness Token State (OPTION A: SPEECH RECOGNITION FIRST)
+    // Clip 1 Dynamic Liveness Token State
     let targetDigits = "";
     let isListeningSpeech = false;
-    let liveRec = null;
+    let recognition = null;
     let actualSpokenWords = "";
     let phraseVerified = false;
-    let phraseAudioBlob = null;
 
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
@@ -512,7 +509,6 @@
     const bankVuBar = document.getElementById('bankVuBar');
     const liveTranscript = document.getElementById('liveTranscript');
     const micIconBtn = document.getElementById('micIconBtn');
-    const phraseAudioPlayback = document.getElementById('phraseAudioPlayback');
     const heardDisplay = document.getElementById('heardDisplay');
     const tokenDisplay = document.getElementById('tokenDisplay');
 
@@ -776,143 +772,138 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    const NUM_WORDS = {
-      '0': ['zero', 'oh', '0'],
-      '1': ['one', 'won', '1'],
-      '2': ['two', 'to', 'too', '2'],
-      '3': ['three', 'tree', '3'],
-      '4': ['four', 'for', 'fore', '4'],
-      '5': ['five', '5'],
-      '6': ['six', '6'],
-      '7': ['seven', '7'],
-      '8': ['eight', 'ate', '8'],
-      '9': ['nine', '9']
+    const WORD_TO_DIGIT = {
+      'zero': '0', 'oh': '0', '0': '0',
+      'one': '1', 'won': '1', '1': '1',
+      'two': '2', 'to': '2', 'too': '2', '2': '2',
+      'three': '3', 'tree': '3', '3': '3',
+      'four': '4', 'for': '4', 'fore': '4', '4': '4',
+      'five': '5', '5': '5',
+      'six': '6', '6': '6',
+      'seven': '7', '7': '7',
+      'eight': '8', 'ate': '8', '8': '8',
+      'nine': '9', '9': '9'
     };
 
-    function evaluateDigitMatch(rawTranscript) {
-      if (!rawTranscript) return false;
-      const lower = rawTranscript.toLowerCase();
-      let matchedCount = 0;
-
-      for (let digit of targetDigits) {
-        const variants = NUM_WORDS[digit];
-        if (variants.some(v => lower.includes(v))) {
-          matchedCount++;
+    // Extracts normalized digit strings: e.g. "one two four seven" -> "1247"
+    function extractDigitsFromSpeech(raw) {
+      if (!raw) return "";
+      const tokens = raw.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+      let found = "";
+      tokens.forEach(tok => {
+        if (WORD_TO_DIGIT[tok]) {
+          found += WORD_TO_DIGIT[tok];
+        } else {
+          for (let ch of tok) {
+            if (WORD_TO_DIGIT[ch]) found += WORD_TO_DIGIT[ch];
+          }
         }
-      }
-      return matchedCount >= 3;
+      });
+      return found;
     }
 
-    // OPTION A: SPEECH RECOGNITION RUNS COMPLETELY ALONE FIRST (NO MIC COLLISION)
+    function checkExactDigitsMatch(heardDigits, target) {
+      if (heardDigits === target) return true;
+      // Allow passing if 3 of 4 match in sequence
+      if (heardDigits.length >= 3 && target.includes(heardDigits)) return true;
+      if (heardDigits.length === 4) {
+        let diffs = 0;
+        for (let i = 0; i < 4; i++) {
+          if (heardDigits[i] !== target[i]) diffs++;
+        }
+        return diffs <= 1;
+      }
+      return false;
+    }
+
+    // CLIP 1: SYNCHRONOUS GESTURE-BOUND SPEECH RECOGNITION (ANDROID COMPATIBLE)
     function toggleSpeechListener() {
-      if (!isListeningSpeech) {
-        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRec) {
-          alert("Speech Recognition API not available on this browser!");
-          return;
-        }
-
-        try {
-          actualSpokenWords = "";
-          phraseVerified = false;
-
-          liveRec = new SpeechRec();
-          liveRec.continuous = true;
-          liveRec.interimResults = true;
-          liveRec.lang = 'en-US';
-
-          isListeningSpeech = true;
-          micIconBtn.classList.add('listening');
-          liveTranscript.value = "";
-          liveTranscript.placeholder = "Listening... say: " + targetDigits.split('').join(' ');
-          heardDisplay.innerHTML = `Live digits heard: <b>(speak numbers now...)</b>`;
-          checkPhrase.className = "";
-          checkPhrase.textContent = `🎙️ Say numbers: ${targetDigits.split('').join(' - ')}`;
-
-          liveRec.onresult = (e) => {
-            let text = '';
-            for (let i = 0; i < e.results.length; i++) {
-              text += e.results[i][0].transcript + ' ';
-            }
-            actualSpokenWords = text.trim();
-            liveTranscript.value = actualSpokenWords;
-            heardDisplay.innerHTML = `Live digits heard: <b style="color:#38bdf8;">"${actualSpokenWords}"</b>`;
-
-            if (evaluateDigitMatch(actualSpokenWords)) {
-              phraseVerified = true;
-              stopSpeechListener();
-            }
-          };
-
-          liveRec.onerror = (err) => {
-            console.log("Speech recognition error:", err);
-          };
-
-          liveRec.onend = () => {
-            if (isListeningSpeech) {
-              stopSpeechListener();
-            }
-          };
-
-          liveRec.start();
-
-          setTimeout(() => {
-            if (isListeningSpeech) stopSpeechListener();
-          }, 8000);
-
-        } catch (e) {
-          alert("Could not start speech listener!");
-        }
-      } else {
+      if (isListeningSpeech) {
         stopSpeechListener();
+        return;
+      }
+
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRec) {
+        alert("Web Speech API not supported on this browser.");
+        return;
+      }
+
+      // Synchronous creation & start on tap event
+      recognition = new SpeechRec();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      actualSpokenWords = "";
+      phraseVerified = false;
+      isListeningSpeech = true;
+
+      micIconBtn.classList.add('listening');
+      liveTranscript.value = "";
+      liveTranscript.placeholder = `Say: ${targetDigits.split('').join(' ')}`;
+      heardDisplay.innerHTML = `Live digits heard: <b>Listening to speech...</b>`;
+      checkPhrase.className = "";
+      checkPhrase.textContent = `🎙️ Say these numbers out loud: ${targetDigits.split('').join(' - ')}`;
+
+      recognition.onresult = (e) => {
+        let transcript = '';
+        for (let i = 0; i < e.results.length; i++) {
+          transcript += e.results[i][0].transcript + ' ';
+        }
+        actualSpokenWords = transcript.trim();
+        const extracted = extractDigitsFromSpeech(actualSpokenWords);
+
+        liveTranscript.value = actualSpokenWords;
+        heardDisplay.innerHTML = `Live heard: <b style="color:#38bdf8;">"${actualSpokenWords}"</b> (digits: ${extracted || 'none'})`;
+
+        if (checkExactDigitsMatch(extracted, targetDigits)) {
+          phraseVerified = true;
+          checkPhrase.className = "passed";
+          checkPhrase.textContent = `✅ Live Human Verified! Spoke matching digits [${targetDigits}]`;
+          stopSpeechListener();
+        }
+      };
+
+      recognition.onerror = (e) => {
+        heardDisplay.innerHTML = `Speech status: <b style="color:#f87171;">${e.error}</b>`;
+      };
+
+      recognition.onend = () => {
+        isListeningSpeech = false;
+        micIconBtn.classList.remove('listening');
+
+        const extracted = extractDigitsFromSpeech(actualSpokenWords);
+        if (phraseVerified || checkExactDigitsMatch(extracted, targetDigits)) {
+          phraseVerified = true;
+          checkPhrase.className = "passed";
+          checkPhrase.textContent = `✅ Live Human Verified! Spoke matching digits [${targetDigits}]`;
+          micIconBtn.style.background = "#15803d";
+          micIconBtn.style.borderColor = "#4ade80";
+          micIconBtn.disabled = true;
+          voiceRecBtn.disabled = false;
+          voiceRecBtn.textContent = "🎙️ Start Voice Training";
+          voiceStatus.textContent = "Anti-spoofing challenge passed! Clip 2 unlocked.";
+          checkReadyToGenerate();
+        } else {
+          checkPhrase.className = "";
+          checkPhrase.textContent = `❌ Verification failed. Heard digits "${extracted || 'none'}" instead of "${targetDigits}". Try again!`;
+        }
+      };
+
+      try {
+        recognition.start();
+      } catch (err) {
+        console.error("Recognition start failed:", err);
       }
     }
 
-    async function stopSpeechListener() {
+    function stopSpeechListener() {
+      if (recognition) {
+        try { recognition.stop(); } catch(e) {}
+      }
       isListeningSpeech = false;
       micIconBtn.classList.remove('listening');
-
-      if (liveRec) {
-        try { liveRec.stop(); } catch(e) {}
-        liveRec = null;
-      }
-
-      if (phraseVerified || evaluateDigitMatch(actualSpokenWords)) {
-        phraseVerified = true;
-        checkPhrase.className = "passed";
-        checkPhrase.textContent = `✅ Live Human Verified! Matched random challenge [${targetDigits}]`;
-        micIconBtn.style.background = "#15803d";
-        micIconBtn.style.borderColor = "#4ade80";
-        micIconBtn.disabled = true;
-        voiceRecBtn.disabled = false;
-        voiceRecBtn.textContent = "🎙️ Start Voice Training";
-        voiceStatus.textContent = "Anti-spoofing challenge passed! Clip 2 unlocked.";
-        checkReadyToGenerate();
-
-        // Snapshot a clean 1.5s audio clip of your voice now that mic is unlocked
-        captureVerifiedAudioSnapshot();
-      } else {
-        checkPhrase.className = "";
-        checkPhrase.textContent = `❌ Verification failed. Heard: "${actualSpokenWords || 'nothing'}". Say: ${targetDigits.split('').join(' - ')}`;
-      }
-    }
-
-    // Captures the voice snippet into the player once speech verification succeeds
-    async function captureVerifiedAudioSnapshot() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const rec = new MediaRecorder(stream);
-        const chunks = [];
-        rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-        rec.onstop = () => {
-          stream.getTracks().forEach(t => t.stop());
-          phraseAudioBlob = new Blob(chunks, { type: 'audio/webm' });
-          phraseAudioPlayback.src = URL.createObjectURL(phraseAudioBlob);
-          phraseAudioPlayback.style.display = 'block';
-        };
-        rec.start();
-        setTimeout(() => rec.stop(), 1200);
-      } catch(e) {}
     }
 
     // CLIP 2: VOICE TRAINING RECORDING (30s minimum)
@@ -1061,7 +1052,7 @@
       const totalSpeechSeconds = segments.reduce((acc, s) => acc + ((s.end - s.start) / sampleRate), 0);
 
       const failedChecks = [];
-      if (!phraseVerified) failedChecks.push("must verify Clip 1 phrase first");
+      if (!phraseVerified) failedChecks.push("must verify Clip 1 challenge first");
       if (recSeconds < 30) failedChecks.push("need at least 30s recording in Clip 2");
       if (voicePeakCount < 20) failedChecks.push("speak more words from the prompt");
       if (totalSpeechSeconds < 5 || segments.length < 12) failedChecks.push("too much silence or background noise");
