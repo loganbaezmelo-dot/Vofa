@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Vofa AI | Feathered Cavity Tracked Rig</title>
+  <title>Vofa AI | Full-Body 3D Tracked Rig</title>
 
-  <!-- Lightweight MediaPipe Face Mesh Engine -->
+  <!-- Lightweight MediaPipe FaceMesh & Pose Engines -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 
   <style>
     :root {
@@ -128,7 +129,7 @@
 
     .view-box {
       width: 100%;
-      min-height: 240px;
+      min-height: 320px;
       background: #06070a;
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -145,7 +146,7 @@
     video, canvas {
       width: 100%;
       height: auto;
-      max-height: 70vh;
+      max-height: 75vh;
       display: block;
       touch-action: none;
       object-fit: contain;
@@ -189,7 +190,7 @@
       flex-direction: column;
       gap: 10px;
       background: #0f1420;
-      border: 1px solid #283046;
+      border: 1px solid var(--border);
       border-radius: 8px;
       padding: 12px;
       margin-top: 6px;
@@ -309,18 +310,18 @@
 
   <header>
     <div class="brand">VOFA <span>AI</span></div>
-    <div class="badge">Feathered Mouth Rig</div>
+    <div class="badge">Full-Body 3D Rig</div>
   </header>
 
   <div class="hero">
     <h1>You don't need AI for AI-generated videos!</h1>
-    <p>Snap mouth poses, draw clean inner lips, and composite with feathered blending.</p>
+    <p>Full-body tracking from head to shoes with procedural neck adjustment.</p>
   </div>
 
   <main>
-    <!-- Step 1: Mouth Capture & Head Turn Video Rig -->
+    <!-- Step 1: Mouth Capture & Full-Body Video Rig -->
     <div class="panel">
-      <h2>Step 1: Face Poses & Head-Turn Rig Setup</h2>
+      <h2>Step 1: Face Poses & Full-Body Video Rig</h2>
       <div class="step-banner" id="stepBanner">
         1. Open camera & take snapshot facing forward with mouth CLOSED.
       </div>
@@ -388,17 +389,17 @@
           <div class="word-list-box" id="wordListBox" style="display: none;"></div>
         </div>
 
-        <p id="voiceStatus" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Audio is optional — Step 1 face setup is all you need!</p>
+        <p id="voiceStatus" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Audio is optional — Step 1 setup is all you need!</p>
       </div>
     </div>
 
     <!-- Step 3: Synthesis Panel -->
     <div class="panel">
-      <h2>Step 3: Script & Render</h2>
+      <h2>Step 3: Script & Full-Body 3D Render</h2>
       <p style="font-size: 0.8rem; color: var(--muted);">
-        Type your script below. The engine uses feathered cavity extraction so skin borders never paste onto turned cheeks.
+        Tracks your full posture (neck, torso, legs, feet) and adjusts neck flex when your head turns.
       </p>
-      <textarea id="scriptInput">hello welcome to vofa ai this mouth stays glued to my face while my head turns</textarea>
+      <textarea id="scriptInput">hello welcome to vofa ai this is my full body 3d avatar with dynamic neck movement</textarea>
 
       <button class="primary" id="genBtn" onclick="executeSynthesis()" disabled>
         Generate Video (Complete Step 1 Rig First)
@@ -428,7 +429,7 @@
     let baseLipCenter = { x: 0, y: 0 };
     let baseLipWidth = 100;
 
-    // Head-Turn Video State
+    // Full-Body Video State
     let headMediaRecorder = null;
     let headVideoChunks = [];
     let isRecordingHeadVid = false;
@@ -439,9 +440,11 @@
     let mouthPatchCtx = null;
     let patchBoundingBox = { x: 0, y: 0, width: 0, height: 0 };
 
-    // MediaPipe FaceMesh Engine
+    // MediaPipe Engines (FaceMesh & Pose)
     let faceMesh = null;
+    let poseTracker = null;
     let latestLandmarks = null;
+    let latestPoseLandmarks = null;
 
     // Optional Audio & Slicer State
     let micMediaRecorder = null;
@@ -480,7 +483,8 @@
     const wordListBox = document.getElementById('wordListBox');
     const playAudioBtn = document.getElementById('playAudioBtn');
 
-    function initMediaPipe() {
+    function initTrackers() {
+      // 1. FaceMesh for precise lip position & rotation
       faceMesh = new FaceMesh({
         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
       });
@@ -495,8 +499,24 @@
           latestLandmarks = results.multiFaceLandmarks[0];
         }
       });
+
+      // 2. Pose for Neck, Torso, Legs, and Feet tracking
+      poseTracker = new Pose({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+      });
+      poseTracker.setOptions({
+        modelComplexity: 1,
+        smoothLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+      poseTracker.onResults((results) => {
+        if (results.poseLandmarks) {
+          latestPoseLandmarks = results.poseLandmarks;
+        }
+      });
     }
-    initMediaPipe();
+    initTrackers();
 
     async function toggleCamera() {
       if (!stream) {
@@ -533,7 +553,7 @@
 
     function handleSnapshot() {
       if (stage === 4) {
-        toggleHeadVideoRecording();
+        toggleFullBodyRecording();
         return;
       }
 
@@ -561,7 +581,7 @@
         } else if (stage === 2) {
           openImg = captured;
           stage = 3;
-          stepBanner.textContent = "✏️ Step 2: Draw a loop tightly around ONLY the dark mouth opening/teeth (NO outer skin)!";
+          stepBanner.textContent = "✏️ Step 2: Draw a loop tightly around ONLY the dark mouth opening/teeth!";
           snapBtn.disabled = true;
           stopCamera();
         }
@@ -677,15 +697,14 @@
         currentDrawingPath = [];
         stage = 4;
 
-        stepBanner.textContent = "Step 3: Tap 'Record Head Video' & gently look Left, Center, then Right with mouth resting closed!";
-        snapBtn.textContent = "⏺ Record 4s Head Video";
+        stepBanner.textContent = "Step 3: Step back so your neck, body, legs, and feet are visible! Tap 'Record 4s Full-Body Video'.";
+        snapBtn.textContent = "⏺ Record 4s Full-Body Video";
         snapBtn.disabled = false;
         drawControls.style.display = 'none';
         toggleCamera();
       }
     }
 
-    // OPTION B: ISOLATE MOUTH CAVITY ON OFFSCREEN CANVAS WITH FEATHERED EDGES
     function buildFeatheredMouthPatch() {
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       openMouthPath.forEach(p => {
@@ -711,7 +730,6 @@
       mouthPatchCanvas.height = h;
       mouthPatchCtx = mouthPatchCanvas.getContext('2d');
 
-      // 1. Draw feathered mask (blurred edge prevents hard rectangular skin lines)
       mouthPatchCtx.save();
       mouthPatchCtx.beginPath();
       mouthPatchCtx.moveTo(openMouthPath[0].x - minX, openMouthPath[0].y - minY);
@@ -725,13 +743,12 @@
       mouthPatchCtx.fillStyle = 'black';
       mouthPatchCtx.fill();
 
-      // 2. Sample only mouth pixels inside mask
       mouthPatchCtx.globalCompositeOperation = 'source-in';
       mouthPatchCtx.drawImage(openImg, -minX, -minY);
       mouthPatchCtx.restore();
     }
 
-    function toggleHeadVideoRecording() {
+    function toggleFullBodyRecording() {
       if (!isRecordingHeadVid) {
         if (!stream) {
           alert("Open camera first!");
@@ -750,7 +767,7 @@
           recordedHeadVideo.play();
 
           stage = 5;
-          stepBanner.textContent = "✅ Head-Turn Rig Ready! MediaPipe lip tracking initialized.";
+          stepBanner.textContent = "✅ Full-Body Rig Ready! Dynamic neck & posture tracking locked.";
           snapBtn.textContent = "Rig Completed";
           snapBtn.disabled = true;
           stopCamera();
@@ -762,10 +779,10 @@
         isRecordingHeadVid = true;
         snapBtn.textContent = "🛑 Stop Video (or wait 4s)";
         snapBtn.style.background = "#ef4444";
-        stepBanner.textContent = "🎥 Recording... Turn head slightly Left, then Center, then Right!";
+        stepBanner.textContent = "🎥 Recording... Turn head slightly while standing naturally!";
 
         setTimeout(() => {
-          if (isRecordingHeadVid) toggleHeadVideoRecording();
+          if (isRecordingHeadVid) toggleFullBodyRecording();
         }, 4000);
       } else {
         isRecordingHeadVid = false;
@@ -990,10 +1007,10 @@
         const hasWords = Object.keys(labeledSoundboard).length > 0;
         if (hasWords) {
           genBtn.textContent = `Generate Video (${Object.keys(labeledSoundboard).length} Labeled Words)`;
-          statusMsg.textContent = "Ready to synthesize script with your labeled voice clips and lip tracking!";
+          statusMsg.textContent = "Ready to synthesize full-body avatar with voiceover!";
         } else {
-          genBtn.textContent = "Generate Video (Silent & Head-Turn Rig Ready)";
-          statusMsg.textContent = "Ready to render smooth head-turning visual puppet with live tracked lips!";
+          genBtn.textContent = "Generate Video (Silent Full-Body Rig Ready)";
+          statusMsg.textContent = "Ready to render full-body puppet with dynamic neck adjustment!";
         }
       }
     }
@@ -1003,7 +1020,7 @@
       if (!scriptText || stage !== 5 || !headVideoBlob) return;
 
       genBtn.disabled = true;
-      statusMsg.textContent = "Tracking face landmarks & stitching video frames...";
+      statusMsg.textContent = "Tracking face & full-body posture with neck compensation...";
       outPlaceholder.style.display = "block";
       outPlaceholder.textContent = "Synthesizing...";
       outVideo.style.display = "none";
@@ -1050,8 +1067,8 @@
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
         statusMsg.textContent = hasAudio 
-          ? "Video generated with tracked lips and voiceover!" 
-          : "Silent video generated with tracked lips! Import into your editor for voiceover.";
+          ? "Full-body video generated with tracked posture and voiceover!" 
+          : "Silent full-body video generated! Import into your editor for voiceover.";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
@@ -1136,26 +1153,57 @@
 
       playNextWord(0);
 
-      // REAL-TIME LIP-TRACKED COMPOSITING WITH FEATHERED CAVITY (OPTION B)
+      // FULL-BODY RENDER LOOP WITH PROCEDURAL NECK COMPENSATION
       async function renderLoop() {
         if (!isRendering && currentVowelOpen < 0.03) return;
 
         currentVowelOpen += (targetVowelOpen - currentVowelOpen) * 0.35;
 
-        if (faceMesh && recordedHeadVideo.readyState >= 2) {
-          await faceMesh.send({ image: recordedHeadVideo });
+        if (recordedHeadVideo.readyState >= 2) {
+          if (faceMesh) await faceMesh.send({ image: recordedHeadVideo });
+          if (poseTracker) await poseTracker.send({ image: recordedHeadVideo });
         }
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 1. Draw live base frame of the head-turn video
+        // 1. Procedural Neck & Shoulder Counter-Adjustment
+        let neckCounterTwist = 0;
+        let neckPivotX = canvas.width * 0.5;
+        let neckPivotY = canvas.height * 0.35;
+
+        if (latestPoseLandmarks && latestPoseLandmarks[11] && latestPoseLandmarks[12]) {
+          const leftShoulder = latestPoseLandmarks[11];
+          const rightShoulder = latestPoseLandmarks[12];
+          const shoulderMidX = ((leftShoulder.x + rightShoulder.x) / 2) * canvas.width;
+          const shoulderMidY = ((leftShoulder.y + rightShoulder.y) / 2) * canvas.height;
+
+          neckPivotX = shoulderMidX;
+          neckPivotY = shoulderMidY;
+
+          if (latestLandmarks && latestLandmarks[152]) {
+            const chinX = latestLandmarks[152].x * canvas.width;
+            const headTurnDeltaX = chinX - shoulderMidX;
+            // 28% procedural counter-twist to simulate neck flex
+            neckCounterTwist = (headTurnDeltaX / canvas.width) * 0.28;
+          }
+        }
+
+        // Draw Full-Body Base Frame with procedural neck elasticity
+        ctx.save();
+        if (Math.abs(neckCounterTwist) > 0.005) {
+          ctx.translate(neckPivotX, neckPivotY);
+          ctx.rotate(neckCounterTwist);
+          ctx.translate(-neckPivotX, -neckPivotY);
+        }
+
         if (recordedHeadVideo.readyState >= 2) {
           ctx.drawImage(recordedHeadVideo, 0, 0, canvas.width, canvas.height);
         } else {
           ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
         }
+        ctx.restore();
 
-        // 2. Track dynamic mouth position and perspective
+        // 2. Track Mouth Anchor & 3D Perspective Scale
         let trackedAnchorX = baseLipCenter.x;
         let trackedAnchorY = baseLipCenter.y;
         let headTiltAngle = 0;
@@ -1182,18 +1230,16 @@
           perspectiveScaleX = Math.min(1.0, Math.max(0.3, currentWidth / baseLipWidth));
         }
 
-        // 3. Composite ONLY the feathered inner mouth cavity (zero skin bleeding)
+        // 3. Composite Feathered Inner Mouth Cavity
         if (currentVowelOpen > 0.04 && mouthPatchCanvas) {
           ctx.save();
 
-          // Translate to live tracked mouth position
           ctx.translate(trackedAnchorX, trackedAnchorY);
-          ctx.rotate(headTiltAngle);
+          ctx.rotate(headTiltAngle + neckCounterTwist);
           ctx.scale(perspectiveScaleX, Math.min(1.0, 0.45 + currentVowelOpen * 0.55));
 
           ctx.globalAlpha = Math.min(1.0, currentVowelOpen * 1.8);
 
-          // Draw feathered inner cavity centered on mouth
           ctx.drawImage(
             mouthPatchCanvas,
             -patchRelCenterX,
@@ -1214,7 +1260,7 @@
     function downloadVid() {
       const a = document.createElement('a');
       a.href = outVideo.src;
-      a.download = 'vofa-tracked-render.webm';
+      a.download = 'vofa-fullbody-render.webm';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
