@@ -29,7 +29,6 @@
       color: var(--text);
     }
 
-    /* header */
     header {
       width: 100%;
       padding: 16px 20px;
@@ -64,22 +63,20 @@
       color: #38bdf8;
     }
 
-    /* hero with gradient text */
     .hero {
       text-align: center;
-      padding: 28px 16px 16px;
+      padding: 24px 16px 12px;
       width: 100%;
     }
 
     .hero h1 {
-      font-size: 1.6rem;
+      font-size: 1.55rem;
       font-weight: 800;
       line-height: 1.25;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
       background: linear-gradient(135deg, #ffffff 20%, #a855f7 65%, #ec4899 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      filter: drop-shadow(0 2px 10px rgba(168, 85, 247, 0.25));
     }
 
     .hero p {
@@ -89,7 +86,6 @@
       padding: 0 10px;
     }
 
-    /* main stack */
     main {
       width: 100%;
       padding: 12px 16px 40px;
@@ -114,7 +110,6 @@
       font-weight: 700;
     }
 
-    /* media container */
     .view-box {
       width: 100%;
       aspect-ratio: 16 / 9;
@@ -126,6 +121,7 @@
       justify-content: center;
       overflow: hidden;
       position: relative;
+      touch-action: none;
     }
 
     video, canvas {
@@ -136,6 +132,7 @@
 
     #renderCanvas {
       display: none;
+      cursor: crosshair;
     }
 
     .placeholder-msg {
@@ -150,6 +147,30 @@
       display: flex;
       gap: 8px;
       width: 100%;
+    }
+
+    /* mouth guide slider container */
+    .slider-box {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      background: #0a0c14;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+    }
+
+    .slider-box label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: #ec4899;
+      cursor: pointer;
     }
 
     button {
@@ -216,17 +237,26 @@
   <main>
     <!-- Biometrics Card -->
     <div class="panel">
-      <h2>Face & Voice Source</h2>
+      <h2>Face & Lip Alignment</h2>
 
-      <div class="view-box">
+      <div class="view-box" id="viewBox">
         <video id="webcam" autoplay playsinline muted></video>
-        <canvas id="renderCanvas" width="400" height="400"></canvas>
+        <canvas id="renderCanvas" width="400" height="225"></canvas>
         <div class="placeholder-msg" id="camPlaceholder">Webcam feed offline</div>
       </div>
 
       <div class="row">
         <button id="camBtn" onclick="toggleCamera()">Open Camera</button>
-        <button id="snapBtn" onclick="applyRuleEngine()" disabled>Scan Face Boundary</button>
+        <button id="snapBtn" onclick="freezePortrait()" disabled>Snapshot Face</button>
+      </div>
+
+      <!-- draggable guide adjuster -->
+      <div class="slider-box" id="sliderBox">
+        <label>
+          <span>Drag red line to your actual mouth line:</span>
+          <b id="seamLabel" style="color: #ec4899;">y=112px</b>
+        </label>
+        <input type="range" id="mouthSlider" min="20" max="210" value="112" oninput="updateSeam(this.value)">
       </div>
 
       <h2 style="margin-top: 4px;">Script Input</h2>
@@ -246,15 +276,15 @@
         <video id="outVideo" controls playsinline style="display: none;"></video>
       </div>
 
-      <p id="statusMsg" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Awaiting biometric snapshot...</p>
+      <p id="statusMsg" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Take a snapshot to align your mouth</p>
       <button id="downloadBtn" disabled onclick="downloadVid()">Download Output</button>
     </div>
   </main>
 
   <script>
     let stream = null;
-    let capturedImage = null;
-    let detectedMouthY = 250;
+    let rawCapturedImage = null;
+    let detectedMouthY = 112; // 16:9 canvas is 400x225, so center-mouth is around 100-130
 
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
@@ -263,6 +293,9 @@
     const camBtn = document.getElementById('camBtn');
     const snapBtn = document.getElementById('snapBtn');
     const genBtn = document.getElementById('genBtn');
+    const sliderBox = document.getElementById('sliderBox');
+    const mouthSlider = document.getElementById('mouthSlider');
+    const seamLabel = document.getElementById('seamLabel');
     const scriptInput = document.getElementById('scriptInput');
     const outVideo = document.getElementById('outVideo');
     const outPlaceholder = document.getElementById('outPlaceholder');
@@ -292,50 +325,73 @@
       }
     }
 
-    function applyRuleEngine() {
+    function freezePortrait() {
       canvas.width = 400;
-      canvas.height = 400;
-      ctx.drawImage(webcam, 0, 0, 400, 400);
+      canvas.height = 225; // Locked 16:9 aspect ratio matching view box
+      ctx.drawImage(webcam, 0, 0, 400, 225);
 
-      const imgData = ctx.getImageData(0, 0, 400, 400);
-      const data = imgData.data;
-      let minBrightness = 255;
-      let targetY = 250;
+      rawCapturedImage = new Image();
+      rawCapturedImage.src = canvas.toDataURL('image/png');
 
-      for (let y = 210; y < 310; y++) {
-        let rowBrightness = 0;
-        for (let x = 160; x < 240; x++) {
-          const idx = (y * 400 + x) * 4;
-          const r = data[idx], g = data[idx + 1], b = data[idx + 2];
-          rowBrightness += (r * 0.299 + g * 0.587 + b * 0.114);
-        }
-        rowBrightness /= 80;
-
-        if (rowBrightness < minBrightness) {
-          minBrightness = rowBrightness;
-          targetY = y;
-        }
+      // Stop camera
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
       }
-
-      detectedMouthY = targetY;
-      capturedImage = new Image();
-      capturedImage.src = canvas.toDataURL('image/png');
-
-      stream.getTracks().forEach(t => t.stop());
-      stream = null;
       webcam.style.display = 'none';
       canvas.style.display = 'block';
+      sliderBox.style.display = 'flex';
 
-      snapBtn.textContent = `Seam Found: y=${detectedMouthY} ✓`;
-      snapBtn.style.color = '#10b981';
-      snapBtn.style.borderColor = '#10b981';
+      // Default seam near center face
+      detectedMouthY = 115;
+      mouthSlider.value = detectedMouthY;
+      
+      redrawPreviewGuide();
+
+      snapBtn.textContent = 'Retake Photo';
+      snapBtn.onclick = () => location.reload();
       genBtn.disabled = false;
-      statusMsg.textContent = `Rule applied: Lip boundary locked at y=${detectedMouthY}px`;
+      statusMsg.textContent = "Adjust the slider so the red line sits right on your lips!";
+    }
+
+    function updateSeam(val) {
+      detectedMouthY = parseInt(val, 10);
+      seamLabel.textContent = `y=${detectedMouthY}px`;
+      redrawPreviewGuide();
+    }
+
+    // Touch/click directly on canvas to reposition line
+    canvas.addEventListener('pointerdown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const clickY = e.clientY - rect.top;
+      const scaleY = canvas.height / rect.height;
+      const targetY = Math.round(clickY * scaleY);
+
+      if (targetY > 20 && targetY < 210) {
+        mouthSlider.value = targetY;
+        updateSeam(targetY);
+      }
+    });
+
+    function redrawPreviewGuide() {
+      if (!rawCapturedImage) return;
+      ctx.clearRect(0, 0, 400, 225);
+      ctx.drawImage(rawCapturedImage, 0, 0, 400, 225);
+
+      // Draw high-visibility alignment laser line
+      ctx.strokeStyle = '#ec4899';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, detectedMouthY);
+      ctx.lineTo(400, detectedMouthY);
+      ctx.stroke();
+      ctx.setLineDash([]); // reset
     }
 
     function executeSynthesis() {
       const text = scriptInput.value.trim();
-      if (!text || !capturedImage) return;
+      if (!text || !rawCapturedImage) return;
 
       genBtn.disabled = true;
       statusMsg.textContent = "Synthesizing frames & audio...";
@@ -354,7 +410,7 @@
         outVideo.src = URL.createObjectURL(blob);
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
-        statusMsg.textContent = "Render complete via client rule engine!";
+        statusMsg.textContent = "Render complete! Mouth synced to speech.";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
@@ -368,21 +424,24 @@
 
       utterance.onend = () => {
         animating = false;
-        setTimeout(() => recorder.stop(), 400);
+        setTimeout(() => recorder.stop(), 300);
       };
 
       function renderLoop() {
         if (!animating) return;
 
-        ctx.clearRect(0, 0, 400, 400);
-        ctx.drawImage(capturedImage, 0, 0, 400, detectedMouthY, 0, 0, 400, detectedMouthY);
+        ctx.clearRect(0, 0, 400, 225);
+        // 1. Draw fixed upper skull down to custom seam
+        ctx.drawImage(rawCapturedImage, 0, 0, 400, detectedMouthY, 0, 0, 400, detectedMouthY);
 
-        const mouthShift = Math.sin(frame * 0.45) > 0 ? Math.sin(frame * 0.45) * 12 : 0;
+        // 2. Harmonic displacement for jaw
+        const mouthShift = Math.sin(frame * 0.45) > 0 ? Math.sin(frame * 0.45) * 11 : 0;
 
+        // 3. Draw lower jaw moving downward
         ctx.drawImage(
-          capturedImage, 
-          0, detectedMouthY, 400, 400 - detectedMouthY, 
-          0, detectedMouthY + mouthShift, 400, 400 - detectedMouthY
+          rawCapturedImage, 
+          0, detectedMouthY, 400, 225 - detectedMouthY, 
+          0, detectedMouthY + mouthShift, 400, 225 - detectedMouthY
         );
 
         frame++;
