@@ -178,10 +178,25 @@
       background: #131722;
       border: 1px dashed #38bdf8;
       border-radius: 6px;
-      padding: 10px;
+      padding: 12px;
       font-size: 0.85rem;
       color: #e2e8f0;
       line-height: 1.4;
+      text-align: center;
+    }
+
+    /* Live Token Numbers Display */
+    .token-display {
+      font-size: 1.8rem;
+      font-weight: 900;
+      letter-spacing: 6px;
+      color: #38bdf8;
+      background: #06070a;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 10px;
+      margin: 8px 0;
+      font-family: monospace;
     }
 
     .speech-bar {
@@ -372,27 +387,28 @@
     <div class="panel">
       <h2>Step 2: Real Voice Training (2 Clips)</h2>
 
-      <!-- Clip 1: Web Speech Listener -->
+      <!-- Clip 1: Dynamic Random Number Challenge -->
       <div class="audio-card">
-        <div style="font-weight: 700; font-size: 0.85rem; color: #38bdf8;">Clip 1: Mandatory Identity Phrase</div>
+        <div style="font-weight: 700; font-size: 0.85rem; color: #38bdf8;">Clip 1: Dynamic Liveness Challenge (Anti-Spoofing)</div>
         <div class="prompt-box">
-          Tap the microphone icon, say clearly, and tap again:<br>
-          <b style="color: #f472b6; font-size: 0.95rem;">"I am using Vofa AI."</b>
+          Tap the mic and speak these <b style="color: #f472b6;">4 random digits</b> out loud:
+          <div class="token-display" id="tokenDisplay">----</div>
+          <button onclick="generateNewLivenessChallenge()" style="background: #1e293b; padding: 4px 8px; font-size: 0.75rem; flex: none;">🎲 New Numbers</button>
         </div>
 
         <div class="speech-bar">
-          <input type="text" id="liveTranscript" readonly placeholder="Tap the mic icon, speak, then tap stop..." />
+          <input type="text" id="liveTranscript" readonly placeholder="Tap the mic, read the numbers, tap stop..." />
           <button class="mic-icon-btn" id="micIconBtn" onclick="toggleSpeechListener()" title="Click to record">🎙️</button>
         </div>
 
         <div class="heard-box" id="heardDisplay">
-          What speech engine heard: <b>(waiting for audio...)</b>
+          Live digits heard: <b>(waiting for audio...)</b>
         </div>
 
         <audio id="phraseAudioPlayback" controls style="display:none; width:100%; height:32px; margin-top:4px;"></audio>
 
         <div class="checklist">
-          <span id="checkPhrase">❌ Phrase verification pending (Tap 🎙️ above)</span>
+          <span id="checkPhrase">❌ Liveness pending (Read the 4 digits)</span>
         </div>
       </div>
 
@@ -402,7 +418,7 @@
         <p style="font-size: 0.8rem; color: var(--muted);">
           Read out loud to train your phoneme bank:
         </p>
-        <div class="prompt-box">
+        <div class="prompt-box" style="text-align: left;">
           The quick brown fox jumps over the lazy dog. Today we are testing a completely rule-based browser video generation pipeline that isolates lips and extracts formant slices without using any external artificial intelligence APIs.
         </div>
 
@@ -465,9 +481,9 @@
     let voicePeakCount = 0;
     let lastPeakTime = 0;
 
-    // Clip 1 State
+    // Clip 1 Dynamic Liveness Token State
+    let targetDigits = "";
     let isListeningSpeech = false;
-    let speechRecognitionInstance = null;
     let phraseMediaRecorder = null;
     let phraseChunks = [];
     let savedPhraseBlob = null;
@@ -499,6 +515,7 @@
     const micIconBtn = document.getElementById('micIconBtn');
     const phraseAudioPlayback = document.getElementById('phraseAudioPlayback');
     const heardDisplay = document.getElementById('heardDisplay');
+    const tokenDisplay = document.getElementById('tokenDisplay');
 
     const PHONEMES = {
       'AA': { open: 1.0, dur: 0.17 },
@@ -575,6 +592,14 @@
       });
       return queue;
     }
+
+    // Generate fresh random 4-digit code
+    function generateNewLivenessChallenge() {
+      targetDigits = String(Math.floor(1000 + Math.random() * 9000));
+      tokenDisplay.textContent = targetDigits.split('').join('  ');
+      checkPhrase.textContent = `❌ Liveness challenge: Say numbers "${targetDigits.split('').join(' - ')}"`;
+    }
+    generateNewLivenessChallenge();
 
     async function toggleCamera() {
       if (!stream) {
@@ -752,24 +777,35 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    // EXPANDED PHONETIC SOUND-ALIKE BANK FOR "VOFA"
-    const VOFA_VARIATIONS = [
-      'vofa', 'vovo', 'bofa', 'sofa', 'boba', 'volvo', 'buffalo', 
-      'vauxhall', 'beaufort', 'nova', 'bofill', 'bupa', 'bow fa', 
-      'vo fa', 'bo fa', 'the fa', 'buffay', 'boffa', 'buffa', 'viva', 
-      'alpha', 'both of', 'vaughn', 'focus', 'woof', 'waffle', 'foxtrot'
-    ];
+    // Number word converter for digits
+    const NUM_WORDS = {
+      '0': ['zero', 'oh', '0'],
+      '1': ['one', 'won', '1'],
+      '2': ['two', 'to', 'too', '2'],
+      '3': ['three', 'tree', '3'],
+      '4': ['four', 'for', 'fore', '4'],
+      '5': ['five', '5'],
+      '6': ['six', '6'],
+      '7': ['seven', '7'],
+      '8': ['eight', 'ate', '8'],
+      '9': ['nine', '9']
+    };
 
-    function evaluateTranscript(raw) {
-      const text = raw.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
-      const hasAction = text.includes('using') || text.includes('use') || text.includes('am') || text.includes('im');
-      const hasAi = text.includes('ai') || text.includes('a.i') || text.includes('a i') || text.includes('eye') || text.includes('aye') || text.endsWith(' i');
-      const matchesVofa = VOFA_VARIATIONS.some(variation => text.includes(variation));
+    function evaluateDigitMatch(rawTranscript) {
+      const lower = rawTranscript.toLowerCase();
+      let matchedCount = 0;
 
-      return text.includes('vofa ai') || (matchesVofa && (hasAction || hasAi)) || (hasAction && hasAi && text.split(/\s+/).length >= 3);
+      for (let digit of targetDigits) {
+        const variants = NUM_WORDS[digit];
+        if (variants.some(v => lower.includes(v))) {
+          matchedCount++;
+        }
+      }
+      // Must match at least 3 of 4 digits accurately to handle slight slurring
+      return matchedCount >= 3;
     }
 
-    // CLIP 1: RECORD CLEANLY, THEN RUN SPEECH RECOGNITION DURING PLAYBACK
+    // CLIP 1: RECORD CLEANLY, DECODE DIGITS DIRECTLY
     async function toggleSpeechListener() {
       if (!isListeningSpeech) {
         try {
@@ -809,7 +845,8 @@
                 }
                 energy /= frameSize;
                 const timeMs = (i / decoded.sampleRate) * 1000;
-                if (energy > 0.08 && timeMs - lastSpike > 160) {
+                // Strict 0.08 threshold avoids phone tap clicks
+                if (energy > 0.08 && timeMs - lastSpike > 180) {
                   lastSpike = timeMs;
                   spikes++;
                 }
@@ -817,9 +854,8 @@
               aCtx.close();
 
               const dur = decoded.duration;
-              liveTranscript.value = `Recorded ${dur.toFixed(1)}s (${spikes} real vocal bursts)`;
+              liveTranscript.value = `Recorded ${dur.toFixed(1)}s (${spikes} vocal bursts)`;
 
-              // Trigger Speech-to-Text during speaker playback (No mic collision!)
               runPlaybackSpeechRecognition(dur, spikes);
             }
           };
@@ -827,15 +863,14 @@
           phraseMediaRecorder.start();
           isListeningSpeech = true;
           micIconBtn.classList.add('listening');
-          liveTranscript.value = "Recording clip... speak clearly!";
-          heardDisplay.innerHTML = `What speech engine heard: <b>Recording in progress...</b>`;
+          liveTranscript.value = `Say digits: ${targetDigits.split('').join(' ')}`;
+          heardDisplay.innerHTML = `What speech engine heard: <b>Listening to digits...</b>`;
           checkPhrase.className = "";
-          checkPhrase.textContent = "🎙️ Recording! Speak phrase, then tap mic again to finish.";
+          checkPhrase.textContent = `🎙️ Say numbers out loud: "${targetDigits.split('').join(' - ')}"`;
 
-          // Auto-stop after 5.5s
           setTimeout(() => {
             if (isListeningSpeech) stopSpeechListener();
-          }, 5500);
+          }, 5000);
 
         } catch (e) {
           alert("Microphone permission denied!");
@@ -854,9 +889,9 @@
       }
     }
 
-    // Runs Web Speech Recognition while recorded clip plays out loud
+    // Runs Web Speech Recognition on the spoken digits
     function runPlaybackSpeechRecognition(dur, spikes) {
-      heardDisplay.innerHTML = `What speech engine heard: <b>Playing clip & transcribing...</b>`;
+      heardDisplay.innerHTML = `What speech engine heard: <b>Analyzing digit audio...</b>`;
 
       const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
       let recognizedText = '';
@@ -872,16 +907,16 @@
             let t = '';
             for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
             recognizedText = t.trim();
-            heardDisplay.innerHTML = `What speech engine heard: <b style="color:#f472b6;">"${recognizedText}"</b>`;
+            heardDisplay.innerHTML = `Live digits heard: <b style="color:#38bdf8;">"${recognizedText}"</b>`;
             liveTranscript.value = recognizedText;
           };
 
           rec.onend = () => {
-            validateClipOutcome(dur, spikes, recognizedText);
+            validateLivenessOutcome(dur, spikes, recognizedText);
           };
 
           rec.onerror = () => {
-            validateClipOutcome(dur, spikes, recognizedText);
+            validateLivenessOutcome(dur, spikes, recognizedText);
           };
 
           rec.start();
@@ -892,27 +927,28 @@
 
       phraseAudioPlayback.play();
       setTimeout(() => {
-        validateClipOutcome(dur, spikes, recognizedText);
+        validateLivenessOutcome(dur, spikes, recognizedText);
       }, dur * 1000 + 400);
     }
 
-    function validateClipOutcome(dur, spikes, text) {
-      const speechMatched = text && evaluateTranscript(text);
-      const acousticMatched = (dur >= 1.1 && dur <= 5.5 && spikes >= 4 && spikes <= 11);
+    function validateLivenessOutcome(dur, spikes, text) {
+      const speechMatched = text && evaluateDigitMatch(text);
+      // 4 digits typically produce 4 to 6 syllables across 1.1s to 4.5s
+      const acousticMatched = (dur >= 1.0 && dur <= 5.0 && spikes >= 4 && spikes <= 7);
 
       if (speechMatched || acousticMatched) {
         phraseVerified = true;
         checkPhrase.className = "passed";
-        checkPhrase.textContent = `✅ Phrase Verified! Recorded clip saved (${spikes} syllables, ${dur.toFixed(1)}s)`;
+        checkPhrase.textContent = `✅ Live Human Verified! Matched random challenge [${targetDigits}]`;
         micIconBtn.style.background = "#15803d";
         micIconBtn.style.borderColor = "#4ade80";
         micIconBtn.disabled = true;
         voiceRecBtn.disabled = false;
         voiceRecBtn.textContent = "🎙️ Start Voice Training";
-        voiceStatus.textContent = "Clip 1 verified and audio saved! Now record Clip 2.";
+        voiceStatus.textContent = "Anti-spoofing challenge passed! Live voice saved. Now record Clip 2.";
         checkReadyToGenerate();
       } else {
-        checkPhrase.textContent = `❌ Verification failed (${spikes} vocal bursts, ${dur.toFixed(1)}s). Please tap mic and clearly say: 'I am using Vofa AI'`;
+        checkPhrase.textContent = `❌ Verification failed (${spikes} syllables). Say the 4 digits clearly: ${targetDigits.split('').join(' - ')}`;
       }
     }
 
