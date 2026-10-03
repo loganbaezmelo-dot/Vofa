@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Vofa AI | Head-Turn Video & Auto-Body Puppet Engine</title>
+  <title>Vofa AI | Head-Turn & Auto-Body Engine</title>
 
   <!-- Lightweight MediaPipe Face Mesh Engine -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -166,6 +166,7 @@
       font-size: 0.85rem;
       text-align: center;
       padding: 8px;
+      pointer-events: none;
     }
 
     .row {
@@ -189,7 +190,7 @@
       flex-direction: column;
       gap: 10px;
       background: #0f1420;
-      border: 1px solid #283046;
+      border: 1px solid var(--border);
       border-radius: 8px;
       padding: 12px;
       margin-top: 6px;
@@ -314,7 +315,7 @@
 
   <div class="hero">
     <h1>You don't need AI for AI-generated videos!</h1>
-    <p>Record your real head turning left/right with auto-generated lower body & feathered lipsync.</p>
+    <p>Record your head turning naturally with auto-generated lower body & feathered lipsync.</p>
   </div>
 
   <main>
@@ -351,7 +352,7 @@
       </div>
 
       <p style="font-size: 0.8rem; color: var(--muted); line-height: 1.4;">
-        Audio is 100% optional! You can skip this step to export a silent video for your editor, or record master words below.
+        Audio is 100% optional! Skip this step to export a silent video for your editor, or record master words below.
       </p>
 
       <div class="audio-card">
@@ -396,7 +397,7 @@
     <div class="panel">
       <h2>Step 3: Script & Render</h2>
       <p style="font-size: 0.8rem; color: var(--muted);">
-        Type your script below. The engine animates your tracked head turns, lip syncs, and auto-generates your lower body!
+        Type your script below. The engine animates tracked head turns, lip syncs, and auto-generates your lower body!
       </p>
       <textarea id="scriptInput">hello welcome to vofa ai this mouth stays glued to my face while my head turns</textarea>
 
@@ -525,7 +526,11 @@
         stream = null;
       }
       webcam.srcObject = null;
-      camPlaceholder.style.display = 'block';
+      if (canvas.style.display !== 'block') {
+        camPlaceholder.style.display = 'block';
+      } else {
+        camPlaceholder.style.display = 'none';
+      }
       camBtn.textContent = 'Open Camera';
       snapBtn.disabled = true;
     }
@@ -547,6 +552,7 @@
       const captured = new Image();
       captured.onload = () => {
         webcam.style.display = 'none';
+        camPlaceholder.style.display = 'none';
         canvas.style.display = 'block';
         drawControls.style.display = 'flex';
         confirmStepBtn.disabled = true;
@@ -554,7 +560,7 @@
         if (stage === 0) {
           closedImg = captured;
           stage = 1;
-          stepBanner.textContent = "✏️ Step 1: Draw a loop tightly around your CLOSED lips!";
+          stepBanner.textContent = "✏️️ Step 1: Draw a loop tightly around your CLOSED lips!";
           snapBtn.disabled = true;
           stopCamera();
         } else if (stage === 2) {
@@ -1009,7 +1015,6 @@
       canvas.style.display = 'block';
       webcam.style.display = 'none';
 
-      // Full-length vertical canvas (720 x 1280)
       canvas.width = 720;
       canvas.height = 1280;
 
@@ -1157,7 +1162,7 @@
         ctx.roundRect(240, 1140, 95, 45, [16, 24, 8, 8]);
         ctx.fill();
         ctx.fillStyle = '#f8fafc';
-        ctx.fillRect(235, 1175, 105, 12); // Sole
+        ctx.fillRect(235, 1175, 105, 12);
 
         // Right shoe
         ctx.fillStyle = '#1e293b';
@@ -1165,10 +1170,10 @@
         ctx.roundRect(385, 1140, 95, 45, [24, 16, 8, 8]);
         ctx.fill();
         ctx.fillStyle = '#f8fafc';
-        ctx.fillRect(380, 1175, 105, 12); // Sole
+        ctx.fillRect(380, 1175, 105, 12);
 
         // B. Legs / Pants (Y: 680 to 1140)
-        ctx.fillStyle = '#1e3a5f'; // Deep denim blue
+        ctx.fillStyle = '#1e3a5f';
         // Left pant leg
         ctx.beginPath();
         ctx.moveTo(270, 680 + breathY * 0.5);
@@ -1192,14 +1197,12 @@
         ctx.fillRect(260, 670 + breathY * 0.5, 200, 24);
 
         // --- 2. REAL RECORDED HEAD-TURN VIDEO (TORSO & HEAD) ---
-        // Render your real video at the upper half of the canvas (Y: 40 to 740)
         const vidW = 560;
         const vidH = 700;
         const vidX = (canvas.width - vidW) / 2;
         const vidY = 40 + breathY;
 
         ctx.save();
-        // Rounded clipping border so upper body blends seamlessly into procedural pants
         ctx.beginPath();
         ctx.roundRect(vidX, vidY, vidW, vidH, [24, 24, 16, 16]);
         ctx.clip();
