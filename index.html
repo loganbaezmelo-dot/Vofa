@@ -345,6 +345,7 @@
           <span id="checkPhrase">❌ Phrase verification pending (Tap Record below)</span>
         </div>
         <div class="row">
+          <button id="listenPhraseBtn" onclick="speakSamplePhrase()" style="flex: 0.7; background: #261f38;">🔊 Listen to Phrase</button>
           <button id="phraseRecBtn" onclick="togglePhraseRecording()">🎙️ Record Phrase</button>
         </div>
       </div>
@@ -369,7 +370,7 @@
         </div>
         <div class="timer" id="recTimer">00:00</div>
         <div class="row">
-          <button id="voiceRecBtn" onclick="toggleVoiceRecording()" disabled>🎙️ Start Voice Training (Pass Clip 1 First)</button>
+          <button id="voiceRecBtn" onclick="toggleVoiceRecording()" disabled>🎙️️ Start Voice Training (Pass Clip 1 First)</button>
         </div>
         <p id="voiceStatus" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Clip 1 required before recording voice bank</p>
       </div>
@@ -531,6 +532,16 @@
         queue.push('SIL');
       });
       return queue;
+    }
+
+    // TTS Audio sample generator
+    function speakSamplePhrase() {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance("I am using Vofa A I");
+        utter.rate = 0.95;
+        window.speechSynthesis.speak(utter);
+      }
     }
 
     async function toggleCamera() {
@@ -709,7 +720,27 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    // CLIP 1: LIVE SPEECH-TO-TEXT & SYLLABLE VERIFICATION ENGINE
+    // CLIP 1: SPEECH RECOGNITION WITH COMMON SPEECH-TO-TEXT FAIL VERIFICATION
+    const COMMON_SPEECH_FAILS = [
+      'vofa', 'bofa', 'sofa', 'boba', 'volvo', 'buffalo', 
+      'vovo', 'vauxhall', 'beaufort', 'nova', 'bofill', 'bupa',
+      'bow fa', 'vo fa', 'bo fa', 'the fa', 'buffay'
+    ];
+
+    function verifySpeechTranscript(rawText) {
+      const text = rawText.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+      
+      // Must contain indicator of "using" or "use" or "am"
+      const hasAction = text.includes('using') || text.includes('use') || text.includes('am') || text.includes('im');
+      // Must contain "ai" or "i" or "eye"
+      const hasAi = text.includes('ai') || text.includes('a i') || text.includes('aye') || text.includes('eye') || text.endsWith('i');
+      
+      // Matches the exact word OR any of the common transcription fails
+      const hasVofaSound = COMMON_SPEECH_FAILS.some(fail => text.includes(fail));
+
+      return (hasVofaSound && (hasAction || hasAi)) || text.includes('vofa ai');
+    }
+
     async function togglePhraseRecording() {
       if (!isPhraseRecording) {
         try {
@@ -757,11 +788,8 @@
                 accumulatedTranscript = text.toLowerCase().trim();
                 liveTranscript.value = accumulatedTranscript;
 
-                // Sound-alike / fuzzy match check
-                const t = accumulatedTranscript;
-                const matchesPhrase = (t.includes('vofa') || t.includes('bofa') || t.includes('sofa') || t.includes('vovo') || t.includes('boba') || t.includes('volvo') || t.includes('ai') || t.includes('using'));
-
-                if (matchesPhrase && phraseBurstCount >= 4) {
+                // Test live against known phonetic interpretations & fails
+                if (verifySpeechTranscript(accumulatedTranscript) && phraseBurstCount >= 4) {
                   triggerPhraseSuccess();
                 }
               };
@@ -769,7 +797,7 @@
               speechRecognizer.onerror = () => {};
               speechRecognizer.start();
             } catch (err) {
-              console.log("Speech recognition busy, falling back to pure syllable verification");
+              console.log("Speech recognition busy, falling back to acoustic checks");
             }
           }
 
@@ -792,23 +820,22 @@
               phraseBurstCount++;
 
               if (!liveTranscript.value) {
-                liveTranscript.value = `[Syllable ${phraseBurstCount} detected...]`;
+                liveTranscript.value = `[Transcribing syllable ${phraseBurstCount}...]`;
               }
-              checkPhrase.textContent = `🎙️ Syllables detected: ${phraseBurstCount} / 7 (Finish speaking...)`;
+              checkPhrase.textContent = `🎙️ Syllables heard: ${phraseBurstCount} / 7 (Finish speaking...)`;
 
               if (silenceTimer) clearTimeout(silenceTimer);
 
               // Wait 650ms after speech stops so user isn't cut off mid-word
-              if (phraseBurstCount >= 5 && phraseBurstCount <= 11) {
+              if (phraseBurstCount >= 5 && phraseBurstCount <= 12) {
                 silenceTimer = setTimeout(() => {
                   const elapsed = (performance.now() - phraseStartTime) / 1000;
-                  const t = accumulatedTranscript;
-                  const hasKeywords = (t.includes('vofa') || t.includes('using') || t.includes('ai') || t.includes('bofa') || t.includes('sofa') || t.length > 5);
+                  const passesSpeech = verifySpeechTranscript(accumulatedTranscript);
 
-                  if (elapsed >= 1.2 && (hasKeywords || phraseBurstCount >= 6)) {
+                  if (elapsed >= 1.1 && (passesSpeech || phraseBurstCount >= 6)) {
                     triggerPhraseSuccess();
                   } else {
-                    checkPhrase.textContent = "❌ Please say the exact phrase: 'I am using Vofa AI'";
+                    checkPhrase.textContent = `❌ Detected: "${accumulatedTranscript}". Please say: 'I am using Vofa AI'`;
                   }
                 }, 650);
               }
