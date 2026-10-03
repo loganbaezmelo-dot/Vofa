@@ -184,6 +184,21 @@
       line-height: 1.4;
     }
 
+    .checklist {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.8rem;
+    }
+
+    .checklist span {
+      color: var(--muted);
+    }
+
+    .checklist span.passed {
+      color: #4ade80;
+    }
+
     .timer {
       font-size: 1rem;
       font-weight: 800;
@@ -277,19 +292,25 @@
       </div>
     </div>
 
-    <!-- Acoustic Voice Calibration & Noise Filter -->
+    <!-- Acoustic Voice Calibration & Sentence Verification -->
     <div class="panel">
-      <h2>Step 2: Real Voice Training & Noise Filter</h2>
+      <h2>Step 2: Real Voice Training & Verification</h2>
       <div class="audio-card">
         <p style="font-size: 0.8rem; color: var(--muted);">
-          Record in a quiet room if possible (auto noise-gate enabled). <b>1-2 minutes is ideal</b> (supports up to 5 min).
+          Record in a quiet room if possible. <b>1-2 minutes is ideal</b> (minimum 30 seconds required).
         </p>
 
         <div class="prompt-box">
-          <b>Required Calibration Phrase:</b><br>
+          <b>Mandatory phrase:</b><br>
           <i>"I am using Vofa AI."</i><br><br>
-          <b>Read naturally to train your phonetic bank:</b><br>
+          <b>Read out loud to train your voice bank:</b><br>
           The quick brown fox jumps over the lazy dog. Today we are testing a completely rule-based browser video generation pipeline that isolates lips and extracts formant slices without using any external artificial intelligence APIs.
+        </div>
+
+        <div class="checklist">
+          <span id="checkPhrase">❌ Spoke "I am using Vofa AI"</span>
+          <span id="checkTime">❌ Spoke for at least 30 seconds</span>
+          <span id="checkWords">❌ Read enough sentences (0 / 25 words detected)</span>
         </div>
 
         <div class="timer" id="recTimer">00:00</div>
@@ -307,7 +328,7 @@
       <textarea id="scriptInput">hello welcome to vofa ai rule based speech generator</textarea>
 
       <button class="primary" id="genBtn" onclick="executeSynthesis()" disabled>
-        Generate Video (Complete Face & Voice Setup First)
+        Generate Video (Complete Face & Voice First)
       </button>
 
       <div class="view-box" style="margin-top: 10px;">
@@ -322,7 +343,7 @@
 
   <script>
     let stream = null;
-    let stage = 0; // 0: Closed snap, 1: Draw closed, 2: Open snap, 3: Draw open, 4: Face ready
+    let stage = 0;
 
     let closedImg = null;
     let openImg = null;
@@ -331,14 +352,17 @@
     let currentDrawingPath = [];
     let isDrawing = false;
 
-    // Audio recording state
+    // Audio & verification state
     let micMediaRecorder = null;
     let micChunks = [];
-    let micAudioBuffer = null;
     let isMicRecording = false;
     let recTimerInterval = null;
     let recSeconds = 0;
-    let extractedPhonemeBank = {}; // Real sliced voice snippets
+    let extractedPhonemeBank = {};
+
+    let speechRecognizer = null;
+    let verifiedPhraseSpoken = false;
+    let totalWordsSpoken = 0;
 
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
@@ -358,8 +382,10 @@
     const voiceRecBtn = document.getElementById('voiceRecBtn');
     const recTimer = document.getElementById('recTimer');
     const voiceStatus = document.getElementById('voiceStatus');
+    const checkPhrase = document.getElementById('checkPhrase');
+    const checkTime = document.getElementById('checkTime');
+    const checkWords = document.getElementById('checkWords');
 
-    // Phonetic definition rules
     const PHONEMES = {
       'AA': { open: 1.0, dur: 0.17 },
       'AE': { open: 0.85, dur: 0.16 },
@@ -492,7 +518,7 @@
         } else if (stage === 2) {
           openImg = captured;
           stage = 3;
-          stepBanner.textContent = "✏️ Step 2: Draw a loop around ONLY the opening (teeth/tongue inside)!";
+          stepBanner.textContent = "✏️️ Step 2: Draw a loop around ONLY the opening (teeth/tongue inside)!";
           snapBtn.disabled = true;
         }
       };
@@ -597,7 +623,7 @@
         openMouthPath = [...currentDrawingPath];
         stage = 4;
 
-        stepBanner.textContent = "✅ Face setup complete! Now calibrate your voice below.";
+        stepBanner.textContent = "✅ Face setup complete! Record your voice below.";
         drawControls.style.display = 'none';
         checkReadyToGenerate();
 
@@ -612,7 +638,7 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    // VOICE RECORDING & ACOUSTIC FILTER ENGINE
+    // SPEECH RECOGNITION & STRICT VOICE RECORDING VALIDATOR
     async function toggleVoiceRecording() {
       if (!isMicRecording) {
         try {
@@ -625,16 +651,69 @@
           });
 
           micChunks = [];
+          verifiedPhraseSpoken = false;
+          totalWordsSpoken = 0;
+          recSeconds = 0;
+
+          checkPhrase.className = "";
+          checkPhrase.textContent = "❌ Spoke \"I am using Vofa AI\"";
+          checkTime.className = "";
+          checkTime.textContent = "❌ Spoke for at least 30 seconds";
+          checkWords.className = "";
+          checkWords.textContent = "❌ Read enough sentences (0 / 25 words detected)";
+
           micMediaRecorder = new MediaRecorder(micStream);
           micMediaRecorder.ondataavailable = e => {
             if (e.data.size > 0) micChunks.push(e.data);
           };
 
+          // Setup real-time speech verification
+          const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+          if (SpeechRecognition) {
+            speechRecognizer = new SpeechRecognition();
+            speechRecognizer.continuous = true;
+            speechRecognizer.interimResults = true;
+            speechRecognizer.lang = 'en-US';
+
+            speechRecognizer.onresult = (event) => {
+              let fullTranscript = '';
+              for (let i = 0; i < event.results.length; ++i) {
+                fullTranscript += event.results[i][0].transcript.toLowerCase() + ' ';
+              }
+
+              // 1. Mandatory phrase check
+              if (
+                fullTranscript.includes('vofa') || 
+                fullTranscript.includes('using vofa') || 
+                fullTranscript.includes('i am using') ||
+                fullTranscript.includes('vofa ai')
+              ) {
+                verifiedPhraseSpoken = true;
+                checkPhrase.className = "passed";
+                checkPhrase.textContent = "✅ Verified phrase detected (\"I am using Vofa AI\")";
+              }
+
+              // 2. Word count verification
+              const words = fullTranscript.trim().split(/\s+/).filter(Boolean);
+              totalWordsSpoken = words.length;
+              checkWords.textContent = `${totalWordsSpoken >= 25 ? '✅' : '❌'} Read enough sentences (${totalWordsSpoken} / 25 words detected)`;
+              if (totalWordsSpoken >= 25) {
+                checkWords.className = "passed";
+              }
+            };
+
+            speechRecognizer.onerror = (e) => console.log('SpeechRec error:', e);
+            speechRecognizer.start();
+          }
+
           micMediaRecorder.onstop = async () => {
             micStream.getTracks().forEach(t => t.stop());
             clearInterval(recTimerInterval);
+            if (speechRecognizer) {
+              speechRecognizer.stop();
+            }
 
-            voiceStatus.textContent = "Processing audio, removing noise & slicing phonemes...";
+            voiceStatus.textContent = "Validating speech contents & processing audio...";
             const rawBlob = new Blob(micChunks, { type: 'audio/webm' });
             const arrayBuf = await rawBlob.arrayBuffer();
 
@@ -642,24 +721,30 @@
             const audioCtx = new AudioContext();
             const decoded = await audioCtx.decodeAudioData(arrayBuf);
 
-            // Spectral noise-gate & acoustic diphone bank builder
             cleanAndSliceAudio(decoded);
             audioCtx.close();
           };
 
           micMediaRecorder.start();
           isMicRecording = true;
-          recSeconds = 0;
-          voiceRecBtn.textContent = "🛑 Stop & Process Voice Training";
+          voiceRecBtn.textContent = "🛑 Stop & Verify Voice Recording";
           voiceRecBtn.style.background = "#ef4444";
-          voiceStatus.textContent = "Recording... Read the calibration sentence & paragraph!";
+          voiceStatus.textContent = "Listening... Make sure to say the calibration sentence & read the text!";
 
           recTimerInterval = setInterval(() => {
             recSeconds++;
             const m = String(Math.floor(recSeconds / 60)).padStart(2, '0');
             const s = String(recSeconds % 60).padStart(2, '0');
             recTimer.textContent = `${m}:${s}`;
-            if (recSeconds >= 300) { // 5-minute cap
+
+            if (recSeconds >= 30) {
+              checkTime.className = "passed";
+              checkTime.textContent = `✅ Spoke for at least 30 seconds (${m}:${s})`;
+            } else {
+              checkTime.textContent = `❌ Spoke for at least 30 seconds (${30 - recSeconds}s remaining)`;
+            }
+
+            if (recSeconds >= 300) {
               toggleVoiceRecording();
             }
           }, 1000);
@@ -675,13 +760,13 @@
       }
     }
 
-    // Spectral Noise Gate & Acoustic Segmenter
+    // STRICT AUDIO NOISE-GATE & SLICER VALIDATION
     function cleanAndSliceAudio(buffer) {
       const channelData = buffer.getChannelData(0);
       const len = channelData.length;
-
-      // 1. Measure background noise floor (first 0.3s)
       const sampleRate = buffer.sampleRate;
+
+      // 1. Noise floor measurement
       const noiseWindow = Math.min(len, Math.floor(sampleRate * 0.3));
       let noiseEnergy = 0;
       for (let i = 0; i < noiseWindow; i++) {
@@ -689,11 +774,11 @@
       }
       const noiseThreshold = (noiseEnergy / noiseWindow) * 2.2;
 
-      // 2. Gate audio & find active speech chunks
+      // 2. Active speech extraction
       const segments = [];
       let inSpeech = false;
       let segStart = 0;
-      const frameSize = Math.floor(sampleRate * 0.02); // 20ms chunks
+      const frameSize = Math.floor(sampleRate * 0.02);
 
       for (let i = 0; i < len; i += frameSize) {
         let frameEnergy = 0;
@@ -714,19 +799,34 @@
         }
       }
 
-      if (segments.length < 4) {
-        voiceStatus.textContent = "⚠️ Recording was too quiet or too short. Speak clearly!";
+      // STRICT VALIDATION: Require 30s recording, phrase detected, word count, and speech energy
+      const totalSpeechSeconds = segments.reduce((acc, s) => acc + ((s.end - s.start) / sampleRate), 0);
+
+      const failedChecks = [];
+      if (recSeconds < 30) failedChecks.push("need at least 30s recording");
+      if (window.SpeechRecognition || window.webkitSpeechRecognition) {
+        if (!verifiedPhraseSpoken) failedChecks.push("must say 'I am using Vofa AI'");
+        if (totalWordsSpoken < 20) failedChecks.push("read more words from the paragraph");
+      }
+      if (totalSpeechSeconds < 6 || segments.length < 15) failedChecks.push("too much silence or background noise");
+
+      if (failedChecks.length > 0) {
+        voiceStatus.textContent = `❌ Rejected: ${failedChecks.join(', ')} 😭. Try recording again!`;
+        voiceStatus.style.color = "#ef4444";
+        extractedPhonemeBank = {};
+        genBtn.disabled = true;
         return;
       }
 
-      // 3. Map extracted audio slices to real human phoneme bank
+      // 3. Accepted: Cache validated phonetic audio bank
       extractedPhonemeBank = {
         buffer: buffer,
         segments: segments,
         sampleRate: sampleRate
       };
 
-      voiceStatus.textContent = `✅ Voice model active! Extracted ${segments.length} clean phonetic slices with noise-gating.`;
+      voiceStatus.style.color = "#4ade80";
+      voiceStatus.textContent = `✅ Voice model verified! Extracted ${segments.length} speech slices with active noise filter.`;
       checkReadyToGenerate();
     }
 
@@ -734,7 +834,7 @@
       if (stage === 4 && extractedPhonemeBank.segments && extractedPhonemeBank.segments.length > 0) {
         genBtn.disabled = false;
         genBtn.textContent = "Generate Video (Using Your Real Voice)";
-        statusMsg.textContent = "Face and real voice models ready to synthesize!";
+        statusMsg.textContent = "Face and verified real voice ready to synthesize!";
       }
     }
 
@@ -743,7 +843,7 @@
       if (!text || stage !== 4 || !extractedPhonemeBank.segments) return;
 
       genBtn.disabled = true;
-      statusMsg.textContent = "Assembling your real voice slices & lip sync frames...";
+      statusMsg.textContent = "Concatenating real voice slices & lip sync frames...";
       outPlaceholder.style.display = "block";
       outPlaceholder.textContent = "Synthesizing...";
       outVideo.style.display = "none";
@@ -803,7 +903,6 @@
       const segs = extractedPhonemeBank.segments;
       const origBuffer = extractedPhonemeBank.buffer;
 
-      // Plays actual human voice slices from the recorded calibration buffer
       function playPhonemeSlice(index) {
         if (index >= phonemes.length) {
           targetVowelOpen = 0;
@@ -819,11 +918,9 @@
         const dur = pData.dur;
 
         if (ph !== 'SIL') {
-          // Select matched human audio segment
           const seg = segs[index % segs.length];
           const sliceLen = seg.end - seg.start;
 
-          // Build audio buffer from real voice snippet
           const snippetBuffer = audioCtx.createBuffer(1, sliceLen, audioCtx.sampleRate);
           const snippetData = snippetBuffer.getChannelData(0);
           const origChannel = origBuffer.getChannelData(0);
@@ -835,7 +932,6 @@
           const srcNode = audioCtx.createBufferSource();
           srcNode.buffer = snippetBuffer;
 
-          // Cross-fade envelope
           const gainNode = audioCtx.createGain();
           const now = audioCtx.currentTime;
           gainNode.gain.setValueAtTime(0.001, now);
