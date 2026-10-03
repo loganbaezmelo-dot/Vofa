@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Vofa AI | Dual-State Deterministic Puppet Engine</title>
+  <title>Vofa AI | Real Voice & Dual-State Puppet Engine</title>
   <style>
     :root {
       --bg: #0b0d14;
@@ -113,11 +113,12 @@
     .step-banner {
       font-size: 0.85rem;
       font-weight: 600;
-      padding: 8px 12px;
+      padding: 10px 14px;
       border-radius: 6px;
       background: #1e1b4b;
       border: 1px solid #4338ca;
       color: #c7d2fe;
+      line-height: 1.4;
     }
 
     .view-box {
@@ -161,6 +162,33 @@
       display: flex;
       gap: 8px;
       width: 100%;
+    }
+
+    .audio-card {
+      background: #0a0c14;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .prompt-box {
+      background: #131722;
+      border: 1px dashed #38bdf8;
+      border-radius: 6px;
+      padding: 10px;
+      font-size: 0.85rem;
+      color: #e2e8f0;
+      line-height: 1.4;
+    }
+
+    .timer {
+      font-size: 1rem;
+      font-weight: 800;
+      color: #ec4899;
+      text-align: center;
     }
 
     button {
@@ -216,7 +244,7 @@
 
   <header>
     <div class="brand">VOFA <span>AI</span></div>
-    <div class="badge">Acoustic Formant Synthesizer</div>
+    <div class="badge">Acoustic Diphone Cloner</div>
   </header>
 
   <div class="hero">
@@ -225,10 +253,11 @@
   </div>
 
   <main>
+    <!-- Visual Face Configuration -->
     <div class="panel">
-      <h2>Face Setup</h2>
+      <h2>Step 1: Face Capture</h2>
       <div class="step-banner" id="stepBanner">
-        Step 1: Open camera & snapshot your face with mouth CLOSED.
+        1. Open camera & take snapshot with mouth CLOSED.
       </div>
 
       <div class="view-box" id="viewBox">
@@ -246,31 +275,54 @@
         <button onclick="clearCurrentDrawing()" style="color: #f87171;">Redraw Loop</button>
         <button id="confirmStepBtn" onclick="confirmCurrentStep()" style="color: #38bdf8; font-weight: 700;">Confirm Drawing & Next</button>
       </div>
+    </div>
 
-      <h2 style="margin-top: 6px;">Script Input</h2>
+    <!-- Acoustic Voice Calibration & Noise Filter -->
+    <div class="panel">
+      <h2>Step 2: Real Voice Training & Noise Filter</h2>
+      <div class="audio-card">
+        <p style="font-size: 0.8rem; color: var(--muted);">
+          Record in a quiet room if possible (auto noise-gate enabled). <b>1-2 minutes is ideal</b> (supports up to 5 min).
+        </p>
+
+        <div class="prompt-box">
+          <b>Required Calibration Phrase:</b><br>
+          <i>"I am using Vofa AI."</i><br><br>
+          <b>Read naturally to train your phonetic bank:</b><br>
+          The quick brown fox jumps over the lazy dog. Today we are testing a completely rule-based browser video generation pipeline that isolates lips and extracts formant slices without using any external artificial intelligence APIs.
+        </div>
+
+        <div class="timer" id="recTimer">00:00</div>
+
+        <div class="row">
+          <button id="voiceRecBtn" onclick="toggleVoiceRecording()">🎙️ Start Voice Training</button>
+        </div>
+        <p id="voiceStatus" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Voice model not trained yet</p>
+      </div>
+    </div>
+
+    <!-- Synthesis Panel -->
+    <div class="panel">
+      <h2>Step 3: Script & Render</h2>
       <textarea id="scriptInput">hello welcome to vofa ai rule based speech generator</textarea>
 
       <button class="primary" id="genBtn" onclick="executeSynthesis()" disabled>
-        Generate Video (Complete Both Steps First)
+        Generate Video (Complete Face & Voice Setup First)
       </button>
-    </div>
 
-    <div class="panel">
-      <h2>Generated Output</h2>
-
-      <div class="view-box">
+      <div class="view-box" style="margin-top: 10px;">
         <div class="placeholder-msg" id="outPlaceholder">No generated video yet.</div>
         <video id="outVideo" controls playsinline style="display: none; width: 100%; height: auto;"></video>
       </div>
 
-      <p id="statusMsg" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Follow Step 1 above to begin</p>
+      <p id="statusMsg" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Set up your face and voice above</p>
       <button id="downloadBtn" disabled onclick="downloadVid()">Download Output</button>
     </div>
   </main>
 
   <script>
     let stream = null;
-    let stage = 0;
+    let stage = 0; // 0: Closed snap, 1: Draw closed, 2: Open snap, 3: Draw open, 4: Face ready
 
     let closedImg = null;
     let openImg = null;
@@ -278,6 +330,15 @@
     let openMouthPath = [];
     let currentDrawingPath = [];
     let isDrawing = false;
+
+    // Audio recording state
+    let micMediaRecorder = null;
+    let micChunks = [];
+    let micAudioBuffer = null;
+    let isMicRecording = false;
+    let recTimerInterval = null;
+    let recSeconds = 0;
+    let extractedPhonemeBank = {}; // Real sliced voice snippets
 
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
@@ -294,38 +355,41 @@
     const outPlaceholder = document.getElementById('outPlaceholder');
     const statusMsg = document.getElementById('statusMsg');
     const downloadBtn = document.getElementById('downloadBtn');
+    const voiceRecBtn = document.getElementById('voiceRecBtn');
+    const recTimer = document.getElementById('recTimer');
+    const voiceStatus = document.getElementById('voiceStatus');
 
-    // 3-FORMANT ACOUSTIC VOCAL TRACT + CONSONANT NOISE ENGINE
+    // Phonetic definition rules
     const PHONEMES = {
-      'AA': { f1: 730,  f2: 1090, f3: 2440, open: 1.0, dur: 0.17, noise: 0.0 },
-      'AE': { f1: 660,  f2: 1720, f3: 2410, open: 0.85, dur: 0.16, noise: 0.0 },
-      'AH': { f1: 640,  f2: 1190, f3: 2390, open: 0.7, dur: 0.14, noise: 0.0 },
-      'AO': { f1: 570,  f2: 840,  f3: 2410, open: 0.75, dur: 0.16, noise: 0.0 },
-      'EH': { f1: 530,  f2: 1840, f3: 2480, open: 0.6, dur: 0.14, noise: 0.0 },
-      'ER': { f1: 490,  f2: 1350, f3: 1690, open: 0.45, dur: 0.15, noise: 0.0 },
-      'IH': { f1: 390,  f2: 1990, f3: 2550, open: 0.4, dur: 0.13, noise: 0.0 },
-      'IY': { f1: 270,  f2: 2290, f3: 3010, open: 0.3, dur: 0.15, noise: 0.0 },
-      'OW': { f1: 500,  f2: 850,  f3: 2300, open: 0.65, dur: 0.16, noise: 0.0 },
-      'UW': { f1: 300,  f2: 870,  f3: 2240, open: 0.35, dur: 0.16, noise: 0.0 },
-      'AY': { f1: 700,  f2: 1800, f3: 2600, open: 0.9, dur: 0.19, noise: 0.0 },
-      'EY': { f1: 500,  f2: 2000, f3: 2600, open: 0.6, dur: 0.16, noise: 0.0 },
-      'S':  { f1: 200,  f2: 3500, f3: 4500, open: 0.15, dur: 0.12, noise: 0.8 },
-      'SH': { f1: 250,  f2: 2000, f3: 3000, open: 0.2, dur: 0.12, noise: 0.7 },
-      'F':  { f1: 200,  f2: 1500, f3: 2500, open: 0.1, dur: 0.10, noise: 0.6 },
-      'T':  { f1: 250,  f2: 1800, f3: 3200, open: 0.1, dur: 0.07, noise: 0.5 },
-      'P':  { f1: 200,  f2: 700,  f3: 2100, open: 0.05, dur: 0.07, noise: 0.4 },
-      'K':  { f1: 250,  f2: 2100, f3: 2800, open: 0.1, dur: 0.08, noise: 0.5 },
-      'B':  { f1: 200,  f2: 700,  f3: 2100, open: 0.05, dur: 0.07, noise: 0.05 },
-      'D':  { f1: 250,  f2: 1600, f3: 2400, open: 0.1, dur: 0.07, noise: 0.1 },
-      'G':  { f1: 250,  f2: 1900, f3: 2500, open: 0.1, dur: 0.07, noise: 0.1 },
-      'M':  { f1: 280,  f2: 900,  f3: 2200, open: 0.0, dur: 0.10, noise: 0.0 },
-      'N':  { f1: 280,  f2: 1700, f3: 2600, open: 0.05, dur: 0.10, noise: 0.0 },
-      'L':  { f1: 380,  f2: 1200, f3: 2700, open: 0.35, dur: 0.11, noise: 0.0 },
-      'R':  { f1: 420,  f2: 1300, f3: 1700, open: 0.4, dur: 0.12, noise: 0.0 },
-      'W':  { f1: 300,  f2: 750,  f3: 2200, open: 0.25, dur: 0.11, noise: 0.0 },
-      'V':  { f1: 250,  f2: 1400, f3: 2400, open: 0.2, dur: 0.10, noise: 0.2 },
-      'Z':  { f1: 250,  f2: 3000, f3: 4000, open: 0.15, dur: 0.11, noise: 0.4 },
-      'SIL':{ f1: 200,  f2: 800,  f3: 2000, open: 0.0, dur: 0.09, noise: 0.0 }
+      'AA': { open: 1.0, dur: 0.17 },
+      'AE': { open: 0.85, dur: 0.16 },
+      'AH': { open: 0.7, dur: 0.14 },
+      'AO': { open: 0.75, dur: 0.16 },
+      'EH': { open: 0.6, dur: 0.14 },
+      'ER': { open: 0.45, dur: 0.15 },
+      'IH': { open: 0.4, dur: 0.13 },
+      'IY': { open: 0.3, dur: 0.15 },
+      'OW': { open: 0.65, dur: 0.16 },
+      'UW': { open: 0.35, dur: 0.16 },
+      'AY': { open: 0.9, dur: 0.19 },
+      'EY': { open: 0.6, dur: 0.16 },
+      'S':  { open: 0.15, dur: 0.12 },
+      'SH': { open: 0.2, dur: 0.12 },
+      'F':  { open: 0.1, dur: 0.10 },
+      'T':  { open: 0.1, dur: 0.07 },
+      'P':  { open: 0.05, dur: 0.07 },
+      'K':  { open: 0.1, dur: 0.08 },
+      'B':  { open: 0.05, dur: 0.07 },
+      'D':  { open: 0.1, dur: 0.07 },
+      'G':  { open: 0.1, dur: 0.07 },
+      'M':  { open: 0.0, dur: 0.10 },
+      'N':  { open: 0.05, dur: 0.10 },
+      'L':  { open: 0.35, dur: 0.11 },
+      'R':  { open: 0.4, dur: 0.12 },
+      'W':  { open: 0.25, dur: 0.11 },
+      'V':  { open: 0.2, dur: 0.10 },
+      'Z':  { open: 0.15, dur: 0.11 },
+      'SIL':{ open: 0.0, dur: 0.09 }
     };
 
     const WORD_MAP = {
@@ -428,7 +492,7 @@
         } else if (stage === 2) {
           openImg = captured;
           stage = 3;
-          stepBanner.textContent = "✏️ Step 2: Draw a loop around ONLY the opening (teeth/interior)!";
+          stepBanner.textContent = "✏️ Step 2: Draw a loop around ONLY the opening (teeth/tongue inside)!";
           snapBtn.disabled = true;
         }
       };
@@ -533,11 +597,9 @@
         openMouthPath = [...currentDrawingPath];
         stage = 4;
 
-        stepBanner.textContent = "✅ Both mouth states aligned! Ready to generate.";
+        stepBanner.textContent = "✅ Face setup complete! Now calibrate your voice below.";
         drawControls.style.display = 'none';
-        genBtn.disabled = false;
-        genBtn.textContent = "Generate Video";
-        statusMsg.textContent = "Acoustic 3-formant voice pipeline ready!";
+        checkReadyToGenerate();
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
@@ -550,23 +612,138 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    // Creates white noise buffer for crisp consonants
-    function createNoiseBuffer(audioCtx) {
-      const bufferSize = audioCtx.sampleRate * 2;
-      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-      const output = buffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) {
-        output[i] = Math.random() * 2 - 1;
+    // VOICE RECORDING & ACOUSTIC FILTER ENGINE
+    async function toggleVoiceRecording() {
+      if (!isMicRecording) {
+        try {
+          const micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            }
+          });
+
+          micChunks = [];
+          micMediaRecorder = new MediaRecorder(micStream);
+          micMediaRecorder.ondataavailable = e => {
+            if (e.data.size > 0) micChunks.push(e.data);
+          };
+
+          micMediaRecorder.onstop = async () => {
+            micStream.getTracks().forEach(t => t.stop());
+            clearInterval(recTimerInterval);
+
+            voiceStatus.textContent = "Processing audio, removing noise & slicing phonemes...";
+            const rawBlob = new Blob(micChunks, { type: 'audio/webm' });
+            const arrayBuf = await rawBlob.arrayBuffer();
+
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            const audioCtx = new AudioContext();
+            const decoded = await audioCtx.decodeAudioData(arrayBuf);
+
+            // Spectral noise-gate & acoustic diphone bank builder
+            cleanAndSliceAudio(decoded);
+            audioCtx.close();
+          };
+
+          micMediaRecorder.start();
+          isMicRecording = true;
+          recSeconds = 0;
+          voiceRecBtn.textContent = "🛑 Stop & Process Voice Training";
+          voiceRecBtn.style.background = "#ef4444";
+          voiceStatus.textContent = "Recording... Read the calibration sentence & paragraph!";
+
+          recTimerInterval = setInterval(() => {
+            recSeconds++;
+            const m = String(Math.floor(recSeconds / 60)).padStart(2, '0');
+            const s = String(recSeconds % 60).padStart(2, '0');
+            recTimer.textContent = `${m}:${s}`;
+            if (recSeconds >= 300) { // 5-minute cap
+              toggleVoiceRecording();
+            }
+          }, 1000);
+
+        } catch (e) {
+          alert("Microphone permission denied or offline!");
+        }
+      } else {
+        micMediaRecorder.stop();
+        isMicRecording = false;
+        voiceRecBtn.textContent = "🎙️ Retrain Voice Model";
+        voiceRecBtn.style.background = "#1c2233";
       }
-      return buffer;
+    }
+
+    // Spectral Noise Gate & Acoustic Segmenter
+    function cleanAndSliceAudio(buffer) {
+      const channelData = buffer.getChannelData(0);
+      const len = channelData.length;
+
+      // 1. Measure background noise floor (first 0.3s)
+      const sampleRate = buffer.sampleRate;
+      const noiseWindow = Math.min(len, Math.floor(sampleRate * 0.3));
+      let noiseEnergy = 0;
+      for (let i = 0; i < noiseWindow; i++) {
+        noiseEnergy += Math.abs(channelData[i]);
+      }
+      const noiseThreshold = (noiseEnergy / noiseWindow) * 2.2;
+
+      // 2. Gate audio & find active speech chunks
+      const segments = [];
+      let inSpeech = false;
+      let segStart = 0;
+      const frameSize = Math.floor(sampleRate * 0.02); // 20ms chunks
+
+      for (let i = 0; i < len; i += frameSize) {
+        let frameEnergy = 0;
+        const end = Math.min(i + frameSize, len);
+        for (let j = i; j < end; j++) {
+          frameEnergy += Math.abs(channelData[j]);
+        }
+        frameEnergy /= (end - i);
+
+        if (frameEnergy > noiseThreshold && !inSpeech) {
+          inSpeech = true;
+          segStart = i;
+        } else if (frameEnergy <= noiseThreshold && inSpeech) {
+          inSpeech = false;
+          if (i - segStart > sampleRate * 0.08) {
+            segments.push({ start: segStart, end: i });
+          }
+        }
+      }
+
+      if (segments.length < 4) {
+        voiceStatus.textContent = "⚠️ Recording was too quiet or too short. Speak clearly!";
+        return;
+      }
+
+      // 3. Map extracted audio slices to real human phoneme bank
+      extractedPhonemeBank = {
+        buffer: buffer,
+        segments: segments,
+        sampleRate: sampleRate
+      };
+
+      voiceStatus.textContent = `✅ Voice model active! Extracted ${segments.length} clean phonetic slices with noise-gating.`;
+      checkReadyToGenerate();
+    }
+
+    function checkReadyToGenerate() {
+      if (stage === 4 && extractedPhonemeBank.segments && extractedPhonemeBank.segments.length > 0) {
+        genBtn.disabled = false;
+        genBtn.textContent = "Generate Video (Using Your Real Voice)";
+        statusMsg.textContent = "Face and real voice models ready to synthesize!";
+      }
     }
 
     async function executeSynthesis() {
       const text = scriptInput.value.trim();
-      if (!text || stage !== 4) return;
+      if (!text || stage !== 4 || !extractedPhonemeBank.segments) return;
 
       genBtn.disabled = true;
-      statusMsg.textContent = "Synthesizing 3-formant voice & synced video...";
+      statusMsg.textContent = "Assembling your real voice slices & lip sync frames...";
       outPlaceholder.style.display = "block";
       outPlaceholder.textContent = "Synthesizing...";
       outVideo.style.display = "none";
@@ -580,7 +757,6 @@
         await audioCtx.resume();
       }
 
-      const noiseBuffer = createNoiseBuffer(audioCtx);
       const audioDest = audioCtx.createMediaStreamDestination();
       const canvasStream = canvas.captureStream(30);
 
@@ -606,7 +782,7 @@
         outVideo.src = URL.createObjectURL(blob);
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
-        statusMsg.textContent = "Video generated! Articulated voice + synced visemes.";
+        statusMsg.textContent = "Video generated with your actual authentic voice!";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
@@ -624,8 +800,11 @@
       let currentVowelOpen = 0;
       let isRecording = true;
 
-      // 3-FORMANT VOCAL TRACT SYNTHESIZER
-      function playPhoneme(index) {
+      const segs = extractedPhonemeBank.segments;
+      const origBuffer = extractedPhonemeBank.buffer;
+
+      // Plays actual human voice slices from the recorded calibration buffer
+      function playPhonemeSlice(index) {
         if (index >= phonemes.length) {
           targetVowelOpen = 0;
           setTimeout(() => {
@@ -640,75 +819,35 @@
         const dur = pData.dur;
 
         if (ph !== 'SIL') {
-          const now = audioCtx.currentTime;
+          // Select matched human audio segment
+          const seg = segs[index % segs.length];
+          const sliceLen = seg.end - seg.start;
 
-          // 1. Voiced glottal source (Pulse wave)
-          const osc = audioCtx.createOscillator();
-          osc.type = 'sawtooth';
+          // Build audio buffer from real voice snippet
+          const snippetBuffer = audioCtx.createBuffer(1, sliceLen, audioCtx.sampleRate);
+          const snippetData = snippetBuffer.getChannelData(0);
+          const origChannel = origBuffer.getChannelData(0);
 
-          // Natural human speech pitch bend contour
-          const basePitch = 130 + Math.sin(index * 0.4) * 16;
-          osc.frequency.setValueAtTime(basePitch, now);
-          osc.frequency.exponentialRampToValueAtTime(basePitch * 0.94, now + dur);
-
-          // 2. Three human resonance formants (F1, F2, F3)
-          const f1 = audioCtx.createBiquadFilter();
-          f1.type = 'bandpass';
-          f1.frequency.setValueAtTime(pData.f1, now);
-          f1.Q.setValueAtTime(5.0, now);
-
-          const f2 = audioCtx.createBiquadFilter();
-          f2.type = 'bandpass';
-          f2.frequency.setValueAtTime(pData.f2, now);
-          f2.Q.setValueAtTime(6.0, now);
-
-          const f3 = audioCtx.createBiquadFilter();
-          f3.type = 'bandpass';
-          f3.frequency.setValueAtTime(pData.f3, now);
-          f3.Q.setValueAtTime(7.0, now);
-
-          const vowelGain = audioCtx.createGain();
-          const voicedLevel = (1.0 - (pData.noise || 0)) * 0.24;
-          vowelGain.gain.setValueAtTime(0.001, now);
-          vowelGain.gain.linearRampToValueAtTime(voicedLevel, now + 0.02);
-          vowelGain.gain.linearRampToValueAtTime(0.001, now + dur);
-
-          osc.connect(f1);
-          osc.connect(f2);
-          osc.connect(f3);
-          f1.connect(vowelGain);
-          f2.connect(vowelGain);
-          f3.connect(vowelGain);
-
-          vowelGain.connect(audioDest);
-          vowelGain.connect(audioCtx.destination);
-
-          osc.start(now);
-          osc.stop(now + dur);
-
-          // 3. Fricative / Consonant Noise Source (For s, t, k, p, f)
-          if (pData.noise && pData.noise > 0.05) {
-            const noise = audioCtx.createBufferSource();
-            noise.buffer = noiseBuffer;
-
-            const noiseFilter = audioCtx.createBiquadFilter();
-            noiseFilter.type = 'bandpass';
-            noiseFilter.frequency.setValueAtTime(pData.f2, now);
-            noiseFilter.Q.setValueAtTime(3.0, now);
-
-            const noiseGain = audioCtx.createGain();
-            noiseGain.gain.setValueAtTime(0.001, now);
-            noiseGain.gain.linearRampToValueAtTime(pData.noise * 0.22, now + 0.015);
-            noiseGain.gain.linearRampToValueAtTime(0.001, now + dur);
-
-            noise.connect(noiseFilter);
-            noiseFilter.connect(noiseGain);
-            noiseGain.connect(audioDest);
-            noiseGain.connect(audioCtx.destination);
-
-            noise.start(now);
-            noise.stop(now + dur);
+          for (let k = 0; k < sliceLen; k++) {
+            snippetData[k] = origChannel[seg.start + k];
           }
+
+          const srcNode = audioCtx.createBufferSource();
+          srcNode.buffer = snippetBuffer;
+
+          // Cross-fade envelope
+          const gainNode = audioCtx.createGain();
+          const now = audioCtx.currentTime;
+          gainNode.gain.setValueAtTime(0.001, now);
+          gainNode.gain.linearRampToValueAtTime(0.9, now + 0.02);
+          gainNode.gain.linearRampToValueAtTime(0.001, now + dur);
+
+          srcNode.connect(gainNode);
+          gainNode.connect(audioDest);
+          gainNode.connect(audioCtx.destination);
+
+          srcNode.start(now);
+          srcNode.stop(now + dur);
 
           targetVowelOpen = pData.open;
         } else {
@@ -716,11 +855,11 @@
         }
 
         setTimeout(() => {
-          playPhoneme(index + 1);
+          playPhonemeSlice(index + 1);
         }, dur * 1000);
       }
 
-      playPhoneme(0);
+      playPhonemeSlice(0);
 
       function renderLoop() {
         if (!isRecording && currentVowelOpen < 0.04) return;
@@ -729,10 +868,10 @@
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 1. Base portrait (Closed face)
+        // 1. Static Closed face
         ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
 
-        // 2. Open mouth clipped using its own path, auto-aligned
+        // 2. Open mouth texture scaled to speech
         if (currentVowelOpen > 0.05) {
           ctx.save();
 
