@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Vofa AI | 3D Mesh Puppet Engine</title>
+  <title>Vofa AI | Hybrid Dual-State & Tracked Head Rig</title>
 
   <!-- Lightweight MediaPipe Face Mesh Engine -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -148,10 +148,12 @@
       max-height: 70vh;
       display: block;
       touch-action: none;
+      object-fit: contain;
     }
 
     #renderCanvas {
       display: none;
+      cursor: crosshair;
     }
 
     #recordedHeadVideo {
@@ -307,20 +309,20 @@
 
   <header>
     <div class="brand">VOFA <span>AI</span></div>
-    <div class="badge">3D Mesh Puppet</div>
+    <div class="badge">Tracked Puppet Rig</div>
   </header>
 
   <div class="hero">
     <h1>You don't need AI for AI-generated videos!</h1>
-    <p>3D anatomical mouth deformation mapped to head rotations.</p>
+    <p>Snap mouth poses, draw custom lips, and anchor them dynamically to head turns.</p>
   </div>
 
   <main>
-    <!-- Step 1: Head Turn Video Capture (No Snapshots Needed!) -->
+    <!-- Step 1: Mouth Capture (2 Stills + Tracing) & Head Turn Video Rig -->
     <div class="panel">
-      <h2>Step 1: Record Head-Turn Video (Required)</h2>
+      <h2>Step 1: Face Poses & Head-Turn Rig Setup</h2>
       <div class="step-banner" id="stepBanner">
-        1. Open camera, tap record, and turn your head Left, Center, then Right with mouth resting shut!
+        1. Open camera & take snapshot facing forward with mouth CLOSED.
       </div>
 
       <div class="view-box" id="viewBox">
@@ -332,7 +334,12 @@
 
       <div class="row">
         <button id="camBtn" onclick="toggleCamera()">Open Camera</button>
-        <button id="snapBtn" onclick="toggleHeadVideoRecording()" disabled>⏺ Record 4s Head Video</button>
+        <button id="snapBtn" onclick="handleSnapshot()" disabled>Snapshot Closed Face</button>
+      </div>
+
+      <div class="row" id="drawControls" style="display: none;">
+        <button onclick="clearCurrentDrawing()" style="color: #f87171;">Redraw Loop</button>
+        <button id="confirmStepBtn" onclick="confirmCurrentStep()" style="color: #38bdf8; font-weight: 700;">Confirm Drawing & Next</button>
       </div>
     </div>
 
@@ -344,7 +351,7 @@
       </div>
 
       <p style="font-size: 0.8rem; color: var(--muted); line-height: 1.4;">
-        Audio is 100% optional! You can export a silent video to drop into external video editors, or record words below.
+        Audio is 100% optional! You can skip this step to export a silent video for your editor, or record words below.
       </p>
 
       <div class="audio-card">
@@ -381,20 +388,20 @@
           <div class="word-list-box" id="wordListBox" style="display: none;"></div>
         </div>
 
-        <p id="voiceStatus" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Audio is optional — Step 1 video is all you need!</p>
+        <p id="voiceStatus" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Audio is optional — Step 1 face setup is all you need!</p>
       </div>
     </div>
 
     <!-- Step 3: Synthesis Panel -->
     <div class="panel">
-      <h2>Step 3: Script & 3D Mesh Render</h2>
+      <h2>Step 3: Script & Render</h2>
       <p style="font-size: 0.8rem; color: var(--muted);">
-        The 3D mesh deforms your real mouth geometry directly on the video frame at any head rotation angle.
+        Type your script below. The engine anchors your custom mouth cutout to your real head-turn video.
       </p>
-      <textarea id="scriptInput">hello welcome to vofa ai this 3d mouth opens naturally even when turning my head</textarea>
+      <textarea id="scriptInput">hello welcome to vofa ai this mouth stays glued to my face while my head turns</textarea>
 
       <button class="primary" id="genBtn" onclick="executeSynthesis()" disabled>
-        Generate Video (Record Step 1 Video First)
+        Generate Video (Complete Step 1 Rig First)
       </button>
 
       <div class="view-box" style="margin-top: 10px;">
@@ -402,13 +409,26 @@
         <video id="outVideo" controls playsinline style="display: none; width: 100%; height: auto;"></video>
       </div>
 
-      <p id="statusMsg" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Record Step 1 video above to enable render</p>
+      <p id="statusMsg" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Complete Step 1 above to enable render</p>
       <button id="downloadBtn" disabled onclick="downloadVid()">Download Output (.webm)</button>
     </div>
   </main>
 
   <script>
     let stream = null;
+    let stage = 0;
+
+    // Mouth Stills & Polygons
+    let closedImg = null;
+    let openImg = null;
+    let closedMouthPath = [];
+    let openMouthPath = [];
+    let currentDrawingPath = [];
+    let isDrawing = false;
+    let baseLipCenter = { x: 0, y: 0 };
+    let baseLipWidth = 100;
+
+    // Head-Turn Video State
     let headMediaRecorder = null;
     let headVideoChunks = [];
     let isRecordingHeadVid = false;
@@ -436,6 +456,8 @@
     const camBtn = document.getElementById('camBtn');
     const snapBtn = document.getElementById('snapBtn');
     const genBtn = document.getElementById('genBtn');
+    const drawControls = document.getElementById('drawControls');
+    const confirmStepBtn = document.getElementById('confirmStepBtn');
     const stepBanner = document.getElementById('stepBanner');
     const scriptInput = document.getElementById('scriptInput');
     const outVideo = document.getElementById('outVideo');
@@ -452,10 +474,6 @@
     const cutCountLabel = document.getElementById('cutCountLabel');
     const wordListBox = document.getElementById('wordListBox');
     const playAudioBtn = document.getElementById('playAudioBtn');
-
-    // Canonical MediaPipe Inner Mouth & Lip Landmark Indices
-    const INNER_LIP_INDICES = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95];
-    const LOWER_LIP_BOTTOM_INDICES = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291];
 
     function initMediaPipe() {
       faceMesh = new FaceMesh({
@@ -508,7 +526,159 @@
       snapBtn.disabled = true;
     }
 
-    // 4-SECOND HEAD TURN VIDEO RECORDING
+    function handleSnapshot() {
+      if (stage === 4) {
+        toggleHeadVideoRecording();
+        return;
+      }
+
+      if (!webcam.videoWidth) return;
+
+      const w = webcam.videoWidth;
+      const h = webcam.videoHeight;
+      canvas.width = w;
+      canvas.height = h;
+      ctx.drawImage(webcam, 0, 0, w, h);
+
+      const captured = new Image();
+      captured.onload = () => {
+        webcam.style.display = 'none';
+        canvas.style.display = 'block';
+        drawControls.style.display = 'flex';
+        confirmStepBtn.disabled = true;
+
+        if (stage === 0) {
+          closedImg = captured;
+          stage = 1;
+          stepBanner.textContent = "✏️ Step 1: Draw a loop tightly around your CLOSED lips!";
+          snapBtn.disabled = true;
+          stopCamera();
+        } else if (stage === 2) {
+          openImg = captured;
+          stage = 3;
+          stepBanner.textContent = "✏️ Step 2: Draw a loop around ONLY the opening (teeth/tongue inside)!";
+          snapBtn.disabled = true;
+          stopCamera();
+        }
+      };
+      captured.src = canvas.toDataURL('image/jpeg', 0.95);
+    }
+
+    function getCanvasCoords(e) {
+      const rect = canvas.getBoundingClientRect();
+      let clientX = e.clientX;
+      let clientY = e.clientY;
+
+      if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      }
+
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
+      };
+    }
+
+    function onStart(e) {
+      if (stage !== 1 && stage !== 3) return;
+      e.preventDefault();
+      isDrawing = true;
+      currentDrawingPath = [getCanvasCoords(e)];
+      drawActivePath();
+    }
+
+    function onMove(e) {
+      if (!isDrawing) return;
+      e.preventDefault();
+      currentDrawingPath.push(getCanvasCoords(e));
+      drawActivePath();
+    }
+
+    function onEnd(e) {
+      if (!isDrawing) return;
+      isDrawing = false;
+      if (currentDrawingPath.length > 5) {
+        confirmStepBtn.disabled = false;
+        drawActivePath(true);
+      }
+    }
+
+    canvas.addEventListener('touchstart', onStart, { passive: false });
+    canvas.addEventListener('touchmove', onMove, { passive: false });
+    canvas.addEventListener('touchend', onEnd, { passive: false });
+    canvas.addEventListener('mousedown', onStart);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+
+    function drawActivePath(isDone = false) {
+      const currentBg = stage === 1 ? closedImg : openImg;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(currentBg, 0, 0, canvas.width, canvas.height);
+
+      if (currentDrawingPath.length < 2) return;
+
+      ctx.beginPath();
+      ctx.moveTo(currentDrawingPath[0].x, currentDrawingPath[0].y);
+      for (let i = 1; i < currentDrawingPath.length; i++) {
+        ctx.lineTo(currentDrawingPath[i].x, currentDrawingPath[i].y);
+      }
+      if (isDone) ctx.closePath();
+
+      ctx.strokeStyle = '#ec4899';
+      ctx.lineWidth = Math.max(3, canvas.width * 0.008);
+      ctx.stroke();
+
+      if (isDone) {
+        ctx.fillStyle = 'rgba(236, 72, 153, 0.25)';
+        ctx.fill();
+      }
+    }
+
+    function clearCurrentDrawing() {
+      currentDrawingPath = [];
+      confirmStepBtn.disabled = true;
+      const currentBg = stage === 1 ? closedImg : openImg;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(currentBg, 0, 0, canvas.width, canvas.height);
+    }
+
+    function confirmCurrentStep() {
+      if (stage === 1) {
+        closedMouthPath = [...currentDrawingPath];
+        baseLipCenter = getPolyCenter(closedMouthPath);
+
+        let minX = Infinity, maxX = -Infinity;
+        closedMouthPath.forEach(p => {
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+        });
+        baseLipWidth = Math.max(20, maxX - minX);
+
+        currentDrawingPath = [];
+        stage = 2;
+
+        stepBanner.textContent = "Step 2: Snapshot face with mouth SLIGHTLY OPEN (keep head in same position)!";
+        snapBtn.textContent = "Snapshot Open Face";
+        snapBtn.disabled = true;
+        drawControls.style.display = 'none';
+        toggleCamera();
+      } else if (stage === 3) {
+        openMouthPath = [...currentDrawingPath];
+        currentDrawingPath = [];
+        stage = 4;
+
+        stepBanner.textContent = "Step 3: Tap 'Record Head Video' & gently look Left, Center, then Right with mouth resting closed!";
+        snapBtn.textContent = "⏺ Record 4s Head Video";
+        snapBtn.disabled = false;
+        drawControls.style.display = 'none';
+        toggleCamera();
+      }
+    }
+
     function toggleHeadVideoRecording() {
       if (!isRecordingHeadVid) {
         if (!stream) {
@@ -527,7 +697,8 @@
           recordedHeadVideo.src = URL.createObjectURL(headVideoBlob);
           recordedHeadVideo.play();
 
-          stepBanner.textContent = "✅ Head-Turn Rig Ready! 3D mouth deformation unlocked.";
+          stage = 5;
+          stepBanner.textContent = "✅ Head-Turn Rig Ready! MediaPipe lip tracking initialized.";
           snapBtn.textContent = "Rig Completed";
           snapBtn.disabled = true;
           stopCamera();
@@ -553,7 +724,12 @@
       }
     }
 
-    // OPTIONAL AUDIO & WORD CUTTER LOGIC
+    function getPolyCenter(pts) {
+      let sx = 0, sy = 0;
+      pts.forEach(p => { sx += p.x; sy += p.y; });
+      return { x: sx / pts.length, y: sy / pts.length };
+    }
+
     async function toggleVoiceRecording() {
       if (!isMicRecording) {
         try {
@@ -757,32 +933,35 @@
     }
 
     function checkReadyToGenerate() {
-      if (headVideoBlob) {
+      if (stage === 5) {
         genBtn.disabled = false;
         const hasWords = Object.keys(labeledSoundboard).length > 0;
         if (hasWords) {
           genBtn.textContent = `Generate Video (${Object.keys(labeledSoundboard).length} Labeled Words)`;
-          statusMsg.textContent = "Ready to synthesize 3D mesh puppet with labeled voice clips!";
+          statusMsg.textContent = "Ready to synthesize script with your labeled voice clips and lip tracking!";
         } else {
-          genBtn.textContent = "Generate Video (Silent & 3D Mesh Ready)";
-          statusMsg.textContent = "Ready to render 3D mesh puppet (add audio in post)!";
+          genBtn.textContent = "Generate Video (Silent & Head-Turn Rig Ready)";
+          statusMsg.textContent = "Ready to render smooth head-turning visual puppet with live tracked lips!";
         }
       }
     }
 
-    // SYNTHESIS & 3D ANATOMICAL JAW DEFORMATION PIPELINE
     async function executeSynthesis() {
       const scriptText = scriptInput.value.trim();
-      if (!scriptText || !headVideoBlob) return;
+      if (!scriptText || stage !== 5 || !headVideoBlob) return;
 
       genBtn.disabled = true;
-      statusMsg.textContent = "Running 3D mesh deformation on video frames...";
+      statusMsg.textContent = "Tracking face landmarks & stitching video frames...";
       outPlaceholder.style.display = "block";
       outPlaceholder.textContent = "Synthesizing...";
       outVideo.style.display = "none";
 
       canvas.style.display = 'block';
       webcam.style.display = 'none';
+
+      // Fix pancake aspect ratio: match native dimensions strictly
+      canvas.width = recordedHeadVideo.videoWidth || 720;
+      canvas.height = recordedHeadVideo.videoHeight || 1280;
 
       const hasAudio = Object.keys(labeledSoundboard).length > 0;
 
@@ -820,14 +999,19 @@
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
         statusMsg.textContent = hasAudio 
-          ? "Video generated with 3D anatomical mouth deformation and voiceover!" 
-          : "Silent video generated with 3D mouth deformation! Place your voiceover on top in an editor.";
+          ? "Video generated with tracked lips and voiceover!" 
+          : "Silent video generated with tracked lips! Import into your editor for voiceover.";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
       };
 
       recorder.start();
+
+      const closedCenter = getPolyCenter(closedMouthPath);
+      const openCenter = getPolyCenter(openMouthPath);
+      const patchOffsetX = closedCenter.x - openCenter.x;
+      const patchOffsetY = closedCenter.y - openCenter.y;
 
       const wordsInScript = scriptText.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
       const availableKeys = Object.keys(labeledSoundboard);
@@ -873,9 +1057,9 @@
           srcNode.start(now);
           srcNode.stop(now + wordDur + 0.02);
 
-          targetVowelOpen = 0.95;
+          targetVowelOpen = 0.85;
           setTimeout(() => {
-            targetVowelOpen = 0.25;
+            targetVowelOpen = 0.2;
           }, (wordDur * 0.5) * 1000);
 
           const nextDelay = (wordDur + 0.07) * 1000;
@@ -887,7 +1071,7 @@
           const wordLen = currentWord.length;
           const wordDur = Math.max(0.24, Math.min(0.55, wordLen * 0.075));
 
-          targetVowelOpen = 0.95;
+          targetVowelOpen = 0.85;
           setTimeout(() => {
             targetVowelOpen = 0.25;
           }, (wordDur * 0.5) * 1000);
@@ -902,7 +1086,7 @@
 
       playNextWord(0);
 
-      // REAL-TIME 3D MESH JAW DEFORMATION COMPOSITING
+      // REAL-TIME LIP-TRACKED COMPOSITING LOOP
       async function renderLoop() {
         if (!isRendering && currentVowelOpen < 0.03) return;
 
@@ -914,91 +1098,70 @@
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 1. Draw base head-turn video frame
+        // 1. Draw recorded head-turn video as base frame
         if (recordedHeadVideo.readyState >= 2) {
           ctx.drawImage(recordedHeadVideo, 0, 0, canvas.width, canvas.height);
+        } else {
+          ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
         }
 
-        // 2. Perform 3D Anatomical Jaw Deformation
-        if (latestLandmarks && currentVowelOpen > 0.05) {
-          const lm = latestLandmarks;
+        // 2. Track dynamic mouth position and perspective
+        let trackedAnchorX = baseLipCenter.x;
+        let trackedAnchorY = baseLipCenter.y;
+        let headTiltAngle = 0;
+        let perspectiveScaleX = 1.0;
 
-          // Compute 3D Face Normal / Jaw Orientation vector
-          const noseTip = lm[1];
-          const chin = lm[152];
-          const mouthCenterUpper = lm[13];
-          const mouthCenterLower = lm[14];
+        if (latestLandmarks) {
+          const upperLip = latestLandmarks[13];
+          const lowerLip = latestLandmarks[14];
+          const leftCorner = latestLandmarks[61];
+          const rightCorner = latestLandmarks[291];
 
-          // Jaw displacement vector aligned with face rotation angle
-          const jawDirX = (chin.x - noseTip.x) * canvas.width;
-          const jawDirY = (chin.y - noseTip.y) * canvas.height;
-          const jawMag = Math.sqrt(jawDirX * jawDirX + jawDirY * jawDirY) || 1;
+          trackedAnchorX = ((upperLip.x + lowerLip.x) / 2) * canvas.width;
+          trackedAnchorY = ((upperLip.y + lowerLip.y) / 2) * canvas.height;
 
-          // Maximum 3D drop depth proportional to face size & current open factor
-          const dropPixels = (jawMag * 0.24) * currentVowelOpen;
-          const normDirX = (jawDirX / jawMag) * dropPixels;
-          const normDirY = (jawDirY / jawMag) * dropPixels;
+          headTiltAngle = Math.atan2(
+            (rightCorner.y - leftCorner.y) * canvas.height,
+            (rightCorner.x - leftCorner.x) * canvas.width
+          );
 
-          // A. Draw Anatomical Dark Inner Mouth Cavity
+          // Perspective compression: squash width when head turns sideways
+          const currentWidth = Math.hypot(
+            (rightCorner.x - leftCorner.x) * canvas.width,
+            (rightCorner.y - leftCorner.y) * canvas.height
+          );
+          perspectiveScaleX = Math.min(1.0, Math.max(0.25, currentWidth / baseLipWidth));
+        }
+
+        const deltaTrackX = trackedAnchorX - baseLipCenter.x;
+        const deltaTrackY = trackedAnchorY - baseLipCenter.y;
+
+        // 3. Composite user-drawn open mouth patch with 3D perspective scaling
+        if (currentVowelOpen > 0.04) {
           ctx.save();
+
+          ctx.translate(trackedAnchorX, trackedAnchorY);
+          ctx.rotate(headTiltAngle);
+          ctx.scale(perspectiveScaleX, 1.0);
+          ctx.translate(-trackedAnchorX, -trackedAnchorY);
+
           ctx.beginPath();
-          INNER_LIP_INDICES.forEach((idx, i) => {
-            const pt = lm[idx];
-            // Displace lower lip landmarks downward along 3D face normal
-            const isLower = idx === 14 || idx === 87 || idx === 178 || idx === 88 || idx === 95 || idx === 317 || idx === 402 || idx === 318 || idx === 324;
-            const px = pt.x * canvas.width + (isLower ? normDirX * 0.8 : 0);
-            const py = pt.y * canvas.height + (isLower ? normDirY * 0.8 : 0);
-
-            if (i === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-          });
-          ctx.closePath();
-
-          // Fill realistic oral cavity gradient (deep throat shade)
-          const cavX = mouthCenterUpper.x * canvas.width;
-          const cavY = mouthCenterUpper.y * canvas.height;
-          const grad = ctx.createRadialGradient(cavX, cavY, 2, cavX, cavY + dropPixels * 0.5, Math.max(10, dropPixels * 1.5));
-          grad.addColorStop(0, '#1a0508');
-          grad.addColorStop(0.7, '#2f0d14');
-          grad.addColorStop(1, '#451820');
-
-          ctx.fillStyle = grad;
-          ctx.fill();
-
-          // Subtle upper teeth highlight
-          if (currentVowelOpen > 0.3) {
-            ctx.fillStyle = 'rgba(235, 230, 225, 0.85)';
-            ctx.beginPath();
-            ctx.ellipse(cavX, cavY + (dropPixels * 0.15), Math.max(3, dropPixels * 0.4), Math.max(1.5, dropPixels * 0.12), 0, 0, Math.PI * 2);
-            ctx.fill();
-          }
-          ctx.restore();
-
-          // B. Deform and Shift Lower Lip Polygon along 3D jaw drop
-          ctx.save();
-          ctx.beginPath();
-          LOWER_LIP_BOTTOM_INDICES.forEach((idx, i) => {
-            const pt = lm[idx];
-            const px = pt.x * canvas.width;
-            const py = pt.y * canvas.height;
-            if (i === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-          });
-          // Complete polygon enclosing lower lip
-          for (let k = INNER_LIP_INDICES.length - 1; k >= 0; k--) {
-            const idx = INNER_LIP_INDICES[k];
-            const pt = lm[idx];
-            ctx.lineTo(pt.x * canvas.width, pt.y * canvas.height);
+          ctx.moveTo(openMouthPath[0].x + patchOffsetX + deltaTrackX, openMouthPath[0].y + patchOffsetY + deltaTrackY);
+          for (let i = 1; i < openMouthPath.length; i++) {
+            ctx.lineTo(openMouthPath[i].x + patchOffsetX + deltaTrackX, openMouthPath[i].y + patchOffsetY + deltaTrackY);
           }
           ctx.closePath();
           ctx.clip();
 
-          // Redraw source video lower lip shifted down along 3D orientation
-          ctx.drawImage(
-            recordedHeadVideo,
-            0, 0, canvas.width, canvas.height,
-            normDirX * 0.6, normDirY * 0.6, canvas.width, canvas.height
-          );
+          const vScale = Math.min(1.0, 0.45 + currentVowelOpen * 0.55);
+
+          ctx.translate(trackedAnchorX, trackedAnchorY);
+          ctx.scale(1.0, vScale);
+          ctx.translate(-trackedAnchorX, -trackedAnchorY);
+
+          ctx.globalAlpha = Math.min(1.0, currentVowelOpen * 1.8);
+          ctx.drawImage(openImg, patchOffsetX + deltaTrackX, patchOffsetY + deltaTrackY, canvas.width, canvas.height);
+
           ctx.restore();
         }
 
@@ -1011,7 +1174,7 @@
     function downloadVid() {
       const a = document.createElement('a');
       a.href = outVideo.src;
-      a.download = 'vofa-3d-render.webm';
+      a.download = 'vofa-tracked-render.webm';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
