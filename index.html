@@ -416,7 +416,7 @@
 
       <!-- Clip 2: Voice Model Training -->
       <div class="audio-card">
-        <div style="font-weight: 700; font-size: 0.85rem; color: #a855f7;">Clip 2: Phonetic Voice Bank (30s minimum)</div>
+        <div style="font-weight: 700; font-size: 0.85rem; color: #a855f7;">Clip 2: Phonetic Voice Bank (15s minimum)</div>
         <p style="font-size: 0.8rem; color: var(--muted);">
           Read out loud to train your phoneme bank:
         </p>
@@ -429,7 +429,7 @@
         </div>
 
         <div class="checklist">
-          <span id="checkTime">❌ Spoke for at least 30 seconds (0s / 30s)</span>
+          <span id="checkTime">❌ Spoke for at least 15 seconds (0s / 15s)</span>
           <span id="checkWords">❌ Read enough speech (0 / 25 syllables detected)</span>
         </div>
         <div class="timer" id="recTimer">00:00</div>
@@ -600,7 +600,6 @@
       return queue;
     }
 
-    // Dynamic challenge counts between 5 and 7
     function generateNewLivenessChallenge() {
       const options = [5, 6, 7];
       targetBurstCount = options[Math.floor(Math.random() * options.length)];
@@ -787,7 +786,7 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    // CLIP 1: PURE LOCAL CADENCE & BURST ANALYZER (NO GOOGLE CLOUD NEEDED)
+    // CLIP 1: PURE LOCAL CADENCE & BURST ANALYZER
     async function toggleSpeechListener() {
       if (!isListeningSpeech) {
         try {
@@ -848,7 +847,6 @@
             clip1VuBar.style.width = `${vuPct}%`;
 
             const now = performance.now();
-            // 0.07 threshold + 260ms minimum spacing between digits prevents tap/breath false triggers
             if (avg > 25 && now - lastBurstMs > 280) {
               lastBurstMs = now;
               detectedBursts++;
@@ -867,7 +865,6 @@
           }
           trackVocalBursts();
 
-          // Auto-stop after 8s
           setTimeout(() => {
             if (isListeningSpeech) stopSpeechListener(false);
           }, 8500);
@@ -897,7 +894,7 @@
         micIconBtn.style.borderColor = "#4ade80";
         micIconBtn.disabled = true;
         voiceRecBtn.disabled = false;
-        voiceRecBtn.textContent = "🎙️️ Start Voice Training";
+        voiceRecBtn.textContent = "🎙️ Start Voice Training";
         voiceStatus.textContent = "Anti-spoofing challenge passed! Clip 2 unlocked.";
         checkReadyToGenerate();
       } else {
@@ -907,7 +904,7 @@
       }
     }
 
-    // CLIP 2: VOICE TRAINING RECORDING (30s minimum)
+    // CLIP 2: FAST-PASSED VOICE TRAINING RECORDING (15s MINIMUM)
     async function toggleVoiceRecording() {
       if (!isMicRecording) {
         try {
@@ -930,7 +927,7 @@
           voicePeakCount = 0;
 
           checkTime.className = "";
-          checkTime.textContent = "❌ Spoke for at least 30 seconds (0s / 30s)";
+          checkTime.textContent = "❌ Spoke for at least 15 seconds (0s / 15s)";
           checkWords.className = "";
           checkWords.textContent = "❌ Read enough speech (0 / 25 syllables detected)";
 
@@ -972,7 +969,7 @@
             bankVuBar.style.width = `${vuPct}%`;
 
             const now = performance.now();
-            if (average > 20 && now - lastPeakTime > 150) {
+            if (average > 20 && now - lastPeakTime > 140) {
               lastPeakTime = now;
               voicePeakCount++;
 
@@ -992,11 +989,11 @@
             const s = String(recSeconds % 60).padStart(2, '0');
             recTimer.textContent = `${m}:${s}`;
 
-            if (recSeconds >= 30) {
+            if (recSeconds >= 15) {
               checkTime.className = "passed";
-              checkTime.textContent = `✅ Spoke for at least 30 seconds (${m}:${s})`;
+              checkTime.textContent = `✅ Spoke for at least 15 seconds (${m}:${s})`;
             } else {
-              checkTime.textContent = `❌ Spoke for at least 30 seconds (${30 - recSeconds}s remaining)`;
+              checkTime.textContent = `❌ Spoke for at least 15 seconds (${15 - recSeconds}s remaining)`;
             }
 
             if (recSeconds >= 300) toggleVoiceRecording();
@@ -1013,7 +1010,7 @@
       }
     }
 
-    // STRICT AUDIO NOISE-GATE & SLICER VALIDATION
+    // 15-SECOND VALIDATION GATE
     function cleanAndSliceAudio(buffer) {
       const channelData = buffer.getChannelData(0);
       const len = channelData.length;
@@ -1054,9 +1051,9 @@
 
       const failedChecks = [];
       if (!phraseVerified) failedChecks.push("must verify Clip 1 challenge first");
-      if (recSeconds < 30) failedChecks.push("need at least 30s recording in Clip 2");
+      if (recSeconds < 15) failedChecks.push("need at least 15s recording in Clip 2");
       if (voicePeakCount < 20) failedChecks.push("speak more words from the prompt");
-      if (totalSpeechSeconds < 5 || segments.length < 12) failedChecks.push("too much silence or background noise");
+      if (totalSpeechSeconds < 4 || segments.length < 10) failedChecks.push("too much silence or background noise");
 
       if (failedChecks.length > 0) {
         voiceStatus.textContent = `❌ Rejected: ${failedChecks.join(', ')} 😭. Try recording again!`;
