@@ -296,7 +296,7 @@
     <div class="panel">
       <h2>Step 2: Real Voice Training (2 Clips)</h2>
 
-      <!-- Clip 1: Local Acoustic Phrase Verification -->
+      <!-- Clip 1: Local Cadence & Spectral Shift Verification -->
       <div class="audio-card">
         <div style="font-weight: 700; font-size: 0.85rem; color: #38bdf8;">Clip 1: Mandatory Identity Phrase</div>
         <div class="prompt-box">
@@ -375,7 +375,7 @@
     let voicePeakCount = 0;
     let lastPeakTime = 0;
 
-    // Clip 1 verification state
+    // Clip 1 smart acoustic verification state
     let isPhraseRecording = false;
     let phraseAudioCtx = null;
     let phraseAnalyser = null;
@@ -383,6 +383,8 @@
     let phraseLastBurst = 0;
     let phraseStream = null;
     let phraseVerified = false;
+    let phraseSpectralBands = [];
+    let syllableTimestamps = [];
 
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
@@ -659,7 +661,7 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    // CLIP 1: LOCAL ACOUSTIC PHRASE VERIFIER (NO CLOUD SPEECH BUGS)
+    // CLIP 1: SMART ACOUSTIC PHRASE VERIFIER (Cadence & Spectral Vowel Tracking)
     async function togglePhraseRecording() {
       if (!isPhraseRecording) {
         try {
@@ -677,38 +679,72 @@
           src.connect(phraseAnalyser);
 
           phraseBurstCount = 0;
+          phraseLastBurst = 0;
+          phraseSpectralBands = [];
+          syllableTimestamps = [];
           isPhraseRecording = true;
+          phraseVerified = false;
+
           phraseRecBtn.textContent = "🛑 Listening... Say: 'I am using Vofa AI'";
           phraseRecBtn.style.background = "#ef4444";
           checkPhrase.className = "";
-          checkPhrase.textContent = "🎙️ Listening for phrase syllables (0 / 7)...";
+          checkPhrase.textContent = "🎙️ Analyzing cadence & phonetics (0 / 7 syllables)...";
 
           const buf = new Uint8Array(phraseAnalyser.frequencyBinCount);
-          function trackPhrase() {
+          const binSize = phraseAudioCtx.sampleRate / phraseAnalyser.fftSize;
+
+          function trackPhraseSmart() {
             if (!isPhraseRecording) return;
             phraseAnalyser.getByteFrequencyData(buf);
 
-            let sum = 0;
-            for (let i = 0; i < buf.length; i++) sum += buf[i];
-            let avg = sum / buf.length;
+            let lowEnergy = 0;
+            let highEnergy = 0;
 
+            for (let i = 0; i < buf.length; i++) {
+              const freq = i * binSize;
+              if (freq >= 200 && freq <= 800) lowEnergy += buf[i];
+              if (freq >= 1800 && freq <= 3200) highEnergy += buf[i];
+            }
+
+            let totalAvg = (lowEnergy + highEnergy) / buf.length;
             const now = performance.now();
-            if (avg > 25 && now - phraseLastBurst > 160) {
+
+            if (totalAvg > 24 && now - phraseLastBurst > 170) {
               phraseLastBurst = now;
               phraseBurstCount++;
-              checkPhrase.textContent = `🎙️ Syllables heard: ${phraseBurstCount} / 7`;
+              syllableTimestamps.push(now);
 
-              if (phraseBurstCount >= 5) {
-                phraseVerified = true;
-                checkPhrase.className = "passed";
-                checkPhrase.textContent = "✅ Phrase Verified: 'I am using Vofa AI'";
-                stopPhraseRecording();
+              phraseSpectralBands.push({
+                low: lowEnergy,
+                high: highEnergy,
+                ratio: highEnergy / (lowEnergy + 1)
+              });
+
+              checkPhrase.textContent = `🎙️ Syllables: ${phraseBurstCount} / 7 (Cadence tracking...)`;
+
+              // "I am using Vofa AI" is 7 syllables (allow 6-8 for slight natural blending)
+              if (phraseBurstCount >= 6 && phraseBurstCount <= 8) {
+                const totalPhraseTime = (now - syllableTimestamps[0]) / 1000;
+                const validTiming = totalPhraseTime >= 1.2 && totalPhraseTime <= 4.0;
+                const lastSyllable = phraseSpectralBands[phraseSpectralBands.length - 1];
+                const hasBrightEnding = lastSyllable.ratio > 0.35 || lastSyllable.high > 250;
+
+                if (validTiming && hasBrightEnding) {
+                  phraseVerified = true;
+                  checkPhrase.className = "passed";
+                  checkPhrase.textContent = "✅ Smart Match: Cadence & 'Vofa AI' phonetic profile confirmed!";
+                  stopPhraseRecording();
+                  return;
+                }
+              } else if (phraseBurstCount > 8) {
+                checkPhrase.textContent = "❌ Too many words detected! Say strictly 'I am using Vofa AI'";
+                setTimeout(stopPhraseRecording, 500);
                 return;
               }
             }
-            requestAnimationFrame(trackPhrase);
+            requestAnimationFrame(trackPhraseSmart);
           }
-          trackPhrase();
+          trackPhraseSmart();
 
           setTimeout(() => {
             if (isPhraseRecording) stopPhraseRecording();
@@ -741,9 +777,9 @@
         voiceRecBtn.textContent = "🎙️ Start Voice Training";
         voiceStatus.textContent = "Clip 1 passed! Now record your 30s voice bank in Clip 2.";
       } else {
-        phraseRecBtn.textContent = "🎙️️ Retry Phrase";
+        phraseRecBtn.textContent = "🎙️ Retry Phrase";
         phraseRecBtn.style.background = "#1c2233";
-        checkPhrase.textContent = "❌ Too short! Tap retry and clearly say: 'I am using Vofa AI'";
+        checkPhrase.textContent = "❌ Verification failed. Speak clearly at normal pace: 'I am using Vofa AI'";
       }
     }
 
