@@ -396,7 +396,7 @@
         </div>
 
         <div class="speech-bar">
-          <input type="text" id="liveTranscript" readonly placeholder="Tap mic, speak numbers, tap stop..." />
+          <input type="text" id="liveTranscript" readonly placeholder="Tap mic, speak numbers..." />
           <button class="mic-icon-btn" id="micIconBtn" onclick="toggleSpeechListener()" title="Click to record">🎙️</button>
         </div>
 
@@ -480,15 +480,13 @@
     let voicePeakCount = 0;
     let lastPeakTime = 0;
 
-    // Clip 1 Dynamic Liveness Token State
+    // Clip 1 Dynamic Liveness Token State (OPTION A: SPEECH RECOGNITION FIRST)
     let targetDigits = "";
     let isListeningSpeech = false;
     let liveRec = null;
-    let phraseMediaRecorder = null;
-    let phraseChunks = [];
-    let savedPhraseBlob = null;
-    let phraseVerified = false;
     let actualSpokenWords = "";
+    let phraseVerified = false;
+    let phraseAudioBlob = null;
 
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
@@ -597,6 +595,7 @@
     function generateNewLivenessChallenge() {
       targetDigits = String(Math.floor(1000 + Math.random() * 9000));
       tokenDisplay.textContent = targetDigits.split('').join('  ');
+      checkPhrase.className = "";
       checkPhrase.textContent = `❌ Liveness challenge: Say numbers "${targetDigits.split('').join(' - ')}"`;
     }
     generateNewLivenessChallenge();
@@ -804,33 +803,23 @@
       return matchedCount >= 3;
     }
 
-    // CLIP 1: DECOUPLED TRACKER (PREVENTS PROMPT TEXT LEAK)
-    async function toggleSpeechListener() {
+    // OPTION A: SPEECH RECOGNITION RUNS COMPLETELY ALONE FIRST (NO MIC COLLISION)
+    function toggleSpeechListener() {
       if (!isListeningSpeech) {
         const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRec) {
+          alert("Speech Recognition API not available on this browser!");
+          return;
+        }
 
         try {
-          const phraseStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-          });
-
-          phraseChunks = [];
           actualSpokenWords = "";
           phraseVerified = false;
 
-          phraseMediaRecorder = new MediaRecorder(phraseStream);
-          phraseMediaRecorder.ondataavailable = e => {
-            if (e.data.size > 0) phraseChunks.push(e.data);
-          };
-          phraseMediaRecorder.onstop = () => {
-            phraseStream.getTracks().forEach(t => t.stop());
-            if (phraseChunks.length > 0) {
-              savedPhraseBlob = new Blob(phraseChunks, { type: 'audio/webm' });
-              phraseAudioPlayback.src = URL.createObjectURL(savedPhraseBlob);
-              phraseAudioPlayback.style.display = 'block';
-            }
-          };
-          phraseMediaRecorder.start();
+          liveRec = new SpeechRec();
+          liveRec.continuous = true;
+          liveRec.interimResults = true;
+          liveRec.lang = 'en-US';
 
           isListeningSpeech = true;
           micIconBtn.classList.add('listening');
@@ -840,46 +829,46 @@
           checkPhrase.className = "";
           checkPhrase.textContent = `🎙️ Say numbers: ${targetDigits.split('').join(' - ')}`;
 
-          if (SpeechRec) {
-            liveRec = new SpeechRec();
-            liveRec.continuous = true;
-            liveRec.interimResults = true;
-            liveRec.lang = 'en-US';
+          liveRec.onresult = (e) => {
+            let text = '';
+            for (let i = 0; i < e.results.length; i++) {
+              text += e.results[i][0].transcript + ' ';
+            }
+            actualSpokenWords = text.trim();
+            liveTranscript.value = actualSpokenWords;
+            heardDisplay.innerHTML = `Live digits heard: <b style="color:#38bdf8;">"${actualSpokenWords}"</b>`;
 
-            liveRec.onresult = (e) => {
-              let text = '';
-              for (let i = 0; i < e.results.length; i++) {
-                text += e.results[i][0].transcript + ' ';
-              }
-              actualSpokenWords = text.trim();
-              liveTranscript.value = actualSpokenWords;
-              heardDisplay.innerHTML = `Live digits heard: <b style="color:#38bdf8;">"${actualSpokenWords}"</b>`;
+            if (evaluateDigitMatch(actualSpokenWords)) {
+              phraseVerified = true;
+              stopSpeechListener();
+            }
+          };
 
-              if (evaluateDigitMatch(actualSpokenWords)) {
-                phraseVerified = true;
-                checkPhrase.className = "passed";
-                checkPhrase.textContent = `✅ Live Human Verified! Matched digits [${targetDigits}]`;
-                stopSpeechListener();
-              }
-            };
+          liveRec.onerror = (err) => {
+            console.log("Speech recognition error:", err);
+          };
 
-            liveRec.onerror = () => {};
-            liveRec.start();
-          }
+          liveRec.onend = () => {
+            if (isListeningSpeech) {
+              stopSpeechListener();
+            }
+          };
+
+          liveRec.start();
 
           setTimeout(() => {
             if (isListeningSpeech) stopSpeechListener();
-          }, 7000);
+          }, 8000);
 
         } catch (e) {
-          alert("Microphone permission denied!");
+          alert("Could not start speech listener!");
         }
       } else {
         stopSpeechListener();
       }
     }
 
-    function stopSpeechListener() {
+    async function stopSpeechListener() {
       isListeningSpeech = false;
       micIconBtn.classList.remove('listening');
 
@@ -888,27 +877,42 @@
         liveRec = null;
       }
 
-      if (phraseMediaRecorder && phraseMediaRecorder.state !== 'inactive') {
-        phraseMediaRecorder.stop();
-      }
+      if (phraseVerified || evaluateDigitMatch(actualSpokenWords)) {
+        phraseVerified = true;
+        checkPhrase.className = "passed";
+        checkPhrase.textContent = `✅ Live Human Verified! Matched random challenge [${targetDigits}]`;
+        micIconBtn.style.background = "#15803d";
+        micIconBtn.style.borderColor = "#4ade80";
+        micIconBtn.disabled = true;
+        voiceRecBtn.disabled = false;
+        voiceRecBtn.textContent = "🎙️ Start Voice Training";
+        voiceStatus.textContent = "Anti-spoofing challenge passed! Clip 2 unlocked.";
+        checkReadyToGenerate();
 
-      setTimeout(() => {
-        if (phraseVerified || evaluateDigitMatch(actualSpokenWords)) {
-          phraseVerified = true;
-          checkPhrase.className = "passed";
-          checkPhrase.textContent = `✅ Live Human Verified! Matched random challenge [${targetDigits}]`;
-          micIconBtn.style.background = "#15803d";
-          micIconBtn.style.borderColor = "#4ade80";
-          micIconBtn.disabled = true;
-          voiceRecBtn.disabled = false;
-          voiceRecBtn.textContent = "🎙️ Start Voice Training";
-          voiceStatus.textContent = "Anti-spoofing challenge passed! Clip 2 unlocked.";
-          checkReadyToGenerate();
-        } else {
-          checkPhrase.className = "";
-          checkPhrase.textContent = `❌ Verification failed. Heard: "${actualSpokenWords || 'nothing'}". Say: ${targetDigits.split('').join(' - ')}`;
-        }
-      }, 350);
+        // Snapshot a clean 1.5s audio clip of your voice now that mic is unlocked
+        captureVerifiedAudioSnapshot();
+      } else {
+        checkPhrase.className = "";
+        checkPhrase.textContent = `❌ Verification failed. Heard: "${actualSpokenWords || 'nothing'}". Say: ${targetDigits.split('').join(' - ')}`;
+      }
+    }
+
+    // Captures the voice snippet into the player once speech verification succeeds
+    async function captureVerifiedAudioSnapshot() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const rec = new MediaRecorder(stream);
+        const chunks = [];
+        rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+        rec.onstop = () => {
+          stream.getTracks().forEach(t => t.stop());
+          phraseAudioBlob = new Blob(chunks, { type: 'audio/webm' });
+          phraseAudioPlayback.src = URL.createObjectURL(phraseAudioBlob);
+          phraseAudioPlayback.style.display = 'block';
+        };
+        rec.start();
+        setTimeout(() => rec.stop(), 1200);
+      } catch(e) {}
     }
 
     // CLIP 2: VOICE TRAINING RECORDING (30s minimum)
