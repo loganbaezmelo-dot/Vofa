@@ -3,7 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Vofa AI | Real Voice & Dual-State Puppet Engine</title>
+  <title>Vofa AI | MediaPipe Tracked Puppet Engine</title>
+  
+  <!-- Lightweight 2.5MB MediaPipe Face Mesh Engine -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
   <style>
     :root {
       --bg: #0b0d14;
@@ -178,19 +183,6 @@
       gap: 10px;
     }
 
-    .prompt-box {
-      background: #131722;
-      border: 1px dashed #38bdf8;
-      border-radius: 6px;
-      padding: 12px;
-      font-size: 0.85rem;
-      color: #e2e8f0;
-      line-height: 1.5;
-      text-align: left;
-      max-height: 180px;
-      overflow-y: auto;
-    }
-
     /* Word Cutter Section */
     .cutter-container {
       display: flex;
@@ -317,12 +309,12 @@
 
   <header>
     <div class="brand">VOFA <span>AI</span></div>
-    <div class="badge">Head Video Rig & Word Cutter</div>
+    <div class="badge">MediaPipe Lip Tracking</div>
   </header>
 
   <div class="hero">
     <h1>You don't need AI for AI-generated videos!</h1>
-    <p>Turn your real face into high-performance visual video puppets.</p>
+    <p>Track your real lips in real time across head rotations.</p>
   </div>
 
   <main>
@@ -368,10 +360,9 @@
           <button onclick="clearAudioData()" style="color: #f87171; flex: 0 0 110px;">Clear Audio</button>
         </div>
 
-        <!-- Cutter Tool Player (appears after recording) -->
         <div class="cutter-container" id="cutterContainer" style="display: none;">
           <div style="font-size: 0.85rem; font-weight: 700; color: #38bdf8;">
-            ✂️️ Word Slicer: Listen & Tap "Cut Word" at the end of each word!
+            ✂️ Word Slicer: Listen & Tap "Cut Word" at the end of each word!
           </div>
 
           <audio id="masterAudio" style="width: 100%; height: 32px; margin: 4px 0;"></audio>
@@ -394,7 +385,6 @@
             ✅ Done Cutting: Label My Words
           </button>
 
-          <!-- List of clips to label with text boxes -->
           <div class="word-list-box" id="wordListBox" style="display: none;"></div>
         </div>
 
@@ -406,9 +396,9 @@
     <div class="panel">
       <h2>Step 3: Script & Render</h2>
       <p style="font-size: 0.8rem; color: var(--muted);">
-        Type your script below. The engine animates mouth lipsync and loops your natural head-turn video!
+        MediaPipe tracks your exact lip position every frame so the mouth cutout stays glued to your face while your head turns!
       </p>
-      <textarea id="scriptInput">hello welcome to vofa ai this video uses my real head turn recording with natural mouth flaps</textarea>
+      <textarea id="scriptInput">hello welcome to vofa ai this mouth stays glued to my face while my head turns</textarea>
 
       <button class="primary" id="genBtn" onclick="executeSynthesis()" disabled>
         Generate Video (Complete Step 1 Rig First)
@@ -435,12 +425,17 @@
     let openMouthPath = [];
     let currentDrawingPath = [];
     let isDrawing = false;
+    let baseLipCenter = { x: 0, y: 0 };
 
     // Head-Turn Video State
     let headMediaRecorder = null;
     let headVideoChunks = [];
     let isRecordingHeadVid = false;
     let headVideoBlob = null;
+
+    // MediaPipe FaceMesh Engine (Lightweight wasm)
+    let faceMesh = null;
+    let latestLandmarks = null;
 
     // Optional Audio & Slicer State
     let micMediaRecorder = null;
@@ -478,6 +473,25 @@
     const cutCountLabel = document.getElementById('cutCountLabel');
     const wordListBox = document.getElementById('wordListBox');
     const playAudioBtn = document.getElementById('playAudioBtn');
+
+    // Initialize MediaPipe FaceMesh
+    function initMediaPipe() {
+      faceMesh = new FaceMesh({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+      });
+      faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: false,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+      faceMesh.onResults((results) => {
+        if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+          latestLandmarks = results.multiFaceLandmarks[0];
+        }
+      });
+    }
+    initMediaPipe();
 
     async function toggleCamera() {
       if (!stream) {
@@ -635,6 +649,7 @@
     function confirmCurrentStep() {
       if (stage === 1) {
         closedMouthPath = [...currentDrawingPath];
+        baseLipCenter = getPolyCenter(closedMouthPath);
         currentDrawingPath = [];
         stage = 2;
 
@@ -676,7 +691,7 @@
           recordedHeadVideo.play();
 
           stage = 5;
-          stepBanner.textContent = "✅ Head-Turn Rig Ready! Video background locked.";
+          stepBanner.textContent = "✅ Head-Turn Rig Ready! MediaPipe lip tracking initialized.";
           snapBtn.textContent = "Rig Completed";
           snapBtn.disabled = true;
           stopCamera();
@@ -920,21 +935,21 @@
         const hasWords = Object.keys(labeledSoundboard).length > 0;
         if (hasWords) {
           genBtn.textContent = `Generate Video (${Object.keys(labeledSoundboard).length} Labeled Words)`;
-          statusMsg.textContent = "Ready to synthesize script with your labeled voice clips and head rotation!";
+          statusMsg.textContent = "Ready to synthesize script with your labeled voice clips and lip tracking!";
         } else {
           genBtn.textContent = "Generate Video (Silent & Head-Turn Rig Ready)";
-          statusMsg.textContent = "Ready to render smooth head-turning visual puppet (add audio in post)!";
+          statusMsg.textContent = "Ready to render smooth head-turning visual puppet with live tracked lips!";
         }
       }
     }
 
-    // SYNTHESIS & RENDERING PIPELINE
+    // SYNTHESIS & RENDERING PIPELINE WITH REAL-TIME MEDIAPIPE LIP TRACKING
     async function executeSynthesis() {
       const scriptText = scriptInput.value.trim();
       if (!scriptText || stage !== 5 || !headVideoBlob) return;
 
       genBtn.disabled = true;
-      statusMsg.textContent = "Stitching head-turn video with mouth-flaps...";
+      statusMsg.textContent = "Tracking face landmarks & stitching video frames...";
       outPlaceholder.style.display = "block";
       outPlaceholder.textContent = "Synthesizing...";
       outVideo.style.display = "none";
@@ -978,8 +993,8 @@
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
         statusMsg.textContent = hasAudio 
-          ? "Video generated with synced voiceover and head rotation!" 
-          : "Silent video generated! Import into your video editor and place your voiceover on top.";
+          ? "Video generated with tracked lips and voiceover!" 
+          : "Silent video generated with tracked lips! Import into your video editor and place your voiceover on top.";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
@@ -989,8 +1004,8 @@
 
       const closedCenter = getPolyCenter(closedMouthPath);
       const openCenter = getPolyCenter(openMouthPath);
-      const offsetX = closedCenter.x - openCenter.x;
-      const offsetY = closedCenter.y - openCenter.y;
+      const patchOffsetX = closedCenter.x - openCenter.x;
+      const patchOffsetY = closedCenter.y - openCenter.y;
 
       const wordsInScript = scriptText.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
       const availableKeys = Object.keys(labeledSoundboard);
@@ -1065,40 +1080,76 @@
 
       playNextWord(0);
 
-      function renderLoop() {
+      // REAL-TIME LIP-TRACKED COMPOSITING LOOP
+      async function renderLoop() {
         if (!isRendering && currentVowelOpen < 0.03) return;
 
         currentVowelOpen += (targetVowelOpen - currentVowelOpen) * 0.35;
 
+        // Run face mesh detection on the active video frame
+        if (faceMesh && recordedHeadVideo.readyState >= 2) {
+          await faceMesh.send({ image: recordedHeadVideo });
+        }
+
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Draw recorded continuous head-turn video as base frame
+        // 1. Draw recorded continuous head-turn video as base frame
         if (recordedHeadVideo.readyState >= 2) {
           ctx.drawImage(recordedHeadVideo, 0, 0, canvas.width, canvas.height);
         } else {
           ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
         }
 
-        // Composite animated open mouth cutout
+        // 2. Track dynamic mouth anchor
+        let trackedAnchorX = baseLipCenter.x;
+        let trackedAnchorY = baseLipCenter.y;
+        let headTiltAngle = 0;
+
+        if (latestLandmarks) {
+          // Landmark 13 = Upper lip center, 14 = Lower lip center
+          const upperLip = latestLandmarks[13];
+          const lowerLip = latestLandmarks[14];
+          const leftMouthCorner = latestLandmarks[61];
+          const rightMouthCorner = latestLandmarks[291];
+
+          trackedAnchorX = ((upperLip.x + lowerLip.x) / 2) * canvas.width;
+          trackedAnchorY = ((upperLip.y + lowerLip.y) / 2) * canvas.height;
+
+          // Head tilt angle calculation
+          headTiltAngle = Math.atan2(
+            (rightMouthCorner.y - leftMouthCorner.y) * canvas.height,
+            (rightMouthCorner.x - leftMouthCorner.x) * canvas.width
+          );
+        }
+
+        const deltaTrackX = trackedAnchorX - baseLipCenter.x;
+        const deltaTrackY = trackedAnchorY - baseLipCenter.y;
+
+        // 3. Composite Animated Open Mouth Cutout at exact tracked coordinates
         if (currentVowelOpen > 0.04) {
           ctx.save();
 
+          // Anchor directly to current lip landmark position
+          ctx.translate(trackedAnchorX, trackedAnchorY);
+          ctx.rotate(headTiltAngle);
+          ctx.translate(-trackedAnchorX, -trackedAnchorY);
+
           ctx.beginPath();
-          ctx.moveTo(openMouthPath[0].x + offsetX, openMouthPath[0].y + offsetY);
+          ctx.moveTo(openMouthPath[0].x + patchOffsetX + deltaTrackX, openMouthPath[0].y + patchOffsetY + deltaTrackY);
           for (let i = 1; i < openMouthPath.length; i++) {
-            ctx.lineTo(openMouthPath[i].x + offsetX, openMouthPath[i].y + offsetY);
+            ctx.lineTo(openMouthPath[i].x + patchOffsetX + deltaTrackX, openMouthPath[i].y + patchOffsetY + deltaTrackY);
           }
           ctx.closePath();
           ctx.clip();
 
           const vScale = Math.min(1.0, 0.45 + currentVowelOpen * 0.55);
 
-          ctx.translate(closedCenter.x, closedCenter.y);
+          ctx.translate(trackedAnchorX, trackedAnchorY);
           ctx.scale(1.0, vScale);
-          ctx.translate(-closedCenter.x, -closedCenter.y);
+          ctx.translate(-trackedAnchorX, -trackedAnchorY);
 
           ctx.globalAlpha = Math.min(1.0, currentVowelOpen * 1.8);
-          ctx.drawImage(openImg, offsetX, offsetY, canvas.width, canvas.height);
+          ctx.drawImage(openImg, patchOffsetX + deltaTrackX, patchOffsetY + deltaTrackY, canvas.width, canvas.height);
 
           ctx.restore();
         }
@@ -1106,13 +1157,13 @@
         requestAnimationFrame(renderLoop);
       }
 
-      renderLoop();
+      requestAnimationFrame(renderLoop);
     }
 
     function downloadVid() {
       const a = document.createElement('a');
       a.href = outVideo.src;
-      a.download = 'vofa-render.webm';
+      a.download = 'vofa-tracked-render.webm';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
