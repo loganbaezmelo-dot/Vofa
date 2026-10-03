@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Vofa AI | You don't need AI for AI-generated videos!</title>
+  <title>Vofa AI | Dual-State Deterministic Puppet Engine</title>
   <style>
     :root {
       --bg: #0b0d14;
@@ -110,6 +110,16 @@
       font-weight: 700;
     }
 
+    .step-banner {
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 8px 12px;
+      border-radius: 6px;
+      background: #1e1b4b;
+      border: 1px solid #4338ca;
+      color: #c7d2fe;
+    }
+
     .view-box {
       width: 100%;
       min-height: 240px;
@@ -206,7 +216,7 @@
 
   <header>
     <div class="brand">VOFA <span>AI</span></div>
-    <div class="badge">Trace-Mask Engine</div>
+    <div class="badge">Dual-Sprite Viseme Puppeteer</div>
   </header>
 
   <div class="hero">
@@ -216,7 +226,10 @@
 
   <main>
     <div class="panel">
-      <h2>1. Face & Mouth Selection</h2>
+      <h2>Face Setup</h2>
+      <div class="step-banner" id="stepBanner">
+        Step 1: Open camera & snapshot your face with mouth CLOSED.
+      </div>
 
       <div class="view-box" id="viewBox">
         <video id="webcam" autoplay playsinline muted></video>
@@ -226,18 +239,19 @@
 
       <div class="row">
         <button id="camBtn" onclick="toggleCamera()">Open Camera</button>
-        <button id="snapBtn" onclick="freezePortrait()" disabled>Snapshot Face</button>
+        <button id="snapBtn" onclick="handleSnapshot()" disabled>Snapshot Closed Face</button>
       </div>
 
       <div class="row" id="drawControls" style="display: none;">
-        <button onclick="clearMask()" style="color: #f87171;">Clear Drawing</button>
+        <button onclick="clearCurrentDrawing()" style="color: #f87171;">Redraw Loop</button>
+        <button id="confirmStepBtn" onclick="confirmCurrentStep()" style="color: #38bdf8; font-weight: 700;">Confirm Drawing & Next</button>
       </div>
 
-      <h2 style="margin-top: 4px;">2. Script Input</h2>
+      <h2 style="margin-top: 6px;">Script Input</h2>
       <textarea id="scriptInput">hello welcome to vofa ai rule based speech generator</textarea>
 
       <button class="primary" id="genBtn" onclick="executeSynthesis()" disabled>
-        Generate Video
+        Generate Video (Complete Both Steps First)
       </button>
     </div>
 
@@ -249,17 +263,21 @@
         <video id="outVideo" controls playsinline style="display: none; width: 100%; height: auto;"></video>
       </div>
 
-      <p id="statusMsg" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Take a snapshot to draw around your mouth</p>
+      <p id="statusMsg" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Follow Step 1 above to begin</p>
       <button id="downloadBtn" disabled onclick="downloadVid()">Download Output</button>
     </div>
   </main>
 
   <script>
     let stream = null;
-    let rawCapturedImage = null;
-    let mouthPath = [];
+    let stage = 0; // 0: Need Closed snap, 1: Draw Closed mouth, 2: Need Open snap, 3: Draw Open mouth, 4: Ready!
+
+    let closedImg = null;
+    let openImg = null;
+    let closedMouthPath = [];
+    let openMouthPath = [];
+    let currentDrawingPath = [];
     let isDrawing = false;
-    let maskCompleted = false;
 
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
@@ -269,6 +287,8 @@
     const snapBtn = document.getElementById('snapBtn');
     const genBtn = document.getElementById('genBtn');
     const drawControls = document.getElementById('drawControls');
+    const confirmStepBtn = document.getElementById('confirmStepBtn');
+    const stepBanner = document.getElementById('stepBanner');
     const scriptInput = document.getElementById('scriptInput');
     const outVideo = document.getElementById('outVideo');
     const outPlaceholder = document.getElementById('outPlaceholder');
@@ -288,21 +308,21 @@
       'UW': { f1: 320, f2: 850,  open: 0.35, dur: 0.16 },
       'AY': { f1: 700, f2: 1800, open: 0.9, dur: 0.18 },
       'EY': { f1: 500, f2: 2000, open: 0.6, dur: 0.16 },
-      'B':  { f1: 220, f2: 700,  open: 0.05, dur: 0.07 },
+      'B':  { f1: 220, f2: 700,  open: 0.0, dur: 0.07 },
       'D':  { f1: 250, f2: 1600, open: 0.1, dur: 0.07 },
       'G':  { f1: 250, f2: 1900, open: 0.1, dur: 0.07 },
-      'P':  { f1: 200, f2: 700,  open: 0.05, dur: 0.07 },
+      'P':  { f1: 200, f2: 700,  open: 0.0, dur: 0.07 },
       'T':  { f1: 250, f2: 1700, open: 0.1, dur: 0.07 },
       'K':  { f1: 250, f2: 2000, open: 0.1, dur: 0.08 },
       'S':  { f1: 220, f2: 3200, open: 0.15, dur: 0.10 },
       'Z':  { f1: 240, f2: 2800, open: 0.15, dur: 0.10 },
-      'F':  { f1: 220, f2: 1500, open: 0.15, dur: 0.09 },
-      'V':  { f1: 240, f2: 1400, open: 0.2, dur: 0.09 },
-      'M':  { f1: 280, f2: 900,  open: 0.05, dur: 0.09 },
+      'F':  { f1: 220, f2: 1500, open: 0.1, dur: 0.09 },
+      'V':  { f1: 240, f2: 1400, open: 0.15, dur: 0.09 },
+      'M':  { f1: 280, f2: 900,  open: 0.0, dur: 0.09 },
       'N':  { f1: 280, f2: 1700, open: 0.1, dur: 0.09 },
       'L':  { f1: 380, f2: 1200, open: 0.35, dur: 0.10 },
       'R':  { f1: 420, f2: 1300, open: 0.4, dur: 0.11 },
-      'W':  { f1: 300, f2: 750,  open: 0.25, dur: 0.10 },
+      'W':  { f1: 300, f2: 750,  open: 0.2, dur: 0.10 },
       'SIL':{ f1: 200, f2: 800,  open: 0.0, dur: 0.08 }
     };
 
@@ -359,49 +379,59 @@
           webcam.srcObject = stream;
           await webcam.play();
           camPlaceholder.style.display = 'none';
+          webcam.style.display = 'block';
+          canvas.style.display = 'none';
           camBtn.textContent = 'Close Camera';
           snapBtn.disabled = false;
         } catch (e) {
           alert("Couldn't open camera");
         }
       } else {
-        stream.getTracks().forEach(t => t.stop());
-        stream = null;
-        webcam.srcObject = null;
-        camPlaceholder.style.display = 'block';
-        camBtn.textContent = 'Open Camera';
-        snapBtn.disabled = true;
+        stopCamera();
       }
     }
 
-    function freezePortrait() {
-      if (!webcam.videoWidth || webcam.videoWidth === 0) {
-        alert("Camera warming up, wait 1 sec 😭");
-        return;
-      }
-
-      const naturalW = webcam.videoWidth;
-      const naturalH = webcam.videoHeight;
-      canvas.width = naturalW;
-      canvas.height = naturalH;
-      ctx.drawImage(webcam, 0, 0, naturalW, naturalH);
-
-      rawCapturedImage = new Image();
-      rawCapturedImage.onload = () => {
-        webcam.style.display = 'none';
-        canvas.style.display = 'block';
-        drawControls.style.display = 'flex';
-
-        snapBtn.textContent = 'Retake Photo';
-        snapBtn.onclick = () => location.reload();
-        statusMsg.textContent = "✏️ Draw a loop around your lower lip / mouth!";
-      };
-      rawCapturedImage.src = canvas.toDataURL('image/jpeg', 0.95);
-
+    function stopCamera() {
       if (stream) {
         stream.getTracks().forEach(t => t.stop());
         stream = null;
       }
+      webcam.srcObject = null;
+      camPlaceholder.style.display = 'block';
+      camBtn.textContent = 'Open Camera';
+      snapBtn.disabled = true;
+    }
+
+    function handleSnapshot() {
+      if (!webcam.videoWidth) return;
+
+      const w = webcam.videoWidth;
+      const h = webcam.videoHeight;
+      canvas.width = w;
+      canvas.height = h;
+      ctx.drawImage(webcam, 0, 0, w, h);
+
+      const captured = new Image();
+      captured.onload = () => {
+        webcam.style.display = 'none';
+        canvas.style.display = 'block';
+        drawControls.style.display = 'flex';
+        confirmStepBtn.disabled = true;
+
+        if (stage === 0) {
+          closedImg = captured;
+          stage = 1;
+          stepBanner.textContent = "✏️ Draw a loop around your CLOSED mouth/lips!";
+          snapBtn.disabled = true;
+        } else if (stage === 2) {
+          openImg = captured;
+          stage = 3;
+          stepBanner.textContent = "✏️ Draw a loop around your OPEN mouth (teeth/tongue inside)!";
+          snapBtn.disabled = true;
+        }
+      };
+      captured.src = canvas.toDataURL('image/jpeg', 0.95);
+      stopCamera();
     }
 
     function getCanvasCoords(e) {
@@ -424,49 +454,47 @@
     }
 
     function onStart(e) {
-      if (!rawCapturedImage) return;
+      if (stage !== 1 && stage !== 3) return;
       e.preventDefault();
       isDrawing = true;
-      mouthPath = [getCanvasCoords(e)];
-      drawUserPath();
+      currentDrawingPath = [getCanvasCoords(e)];
+      drawActivePath();
     }
 
     function onMove(e) {
       if (!isDrawing) return;
       e.preventDefault();
-      mouthPath.push(getCanvasCoords(e));
-      drawUserPath();
+      currentDrawingPath.push(getCanvasCoords(e));
+      drawActivePath();
     }
 
     function onEnd(e) {
       if (!isDrawing) return;
       isDrawing = false;
-      if (mouthPath.length > 5) {
-        maskCompleted = true;
-        genBtn.disabled = false;
-        statusMsg.textContent = "Mouth area locked! Ready to generate.";
-        drawUserPath(true);
+      if (currentDrawingPath.length > 5) {
+        confirmStepBtn.disabled = false;
+        drawActivePath(true);
       }
     }
 
     canvas.addEventListener('touchstart', onStart, { passive: false });
     canvas.addEventListener('touchmove', onMove, { passive: false });
     canvas.addEventListener('touchend', onEnd, { passive: false });
-
     canvas.addEventListener('mousedown', onStart);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onEnd);
 
-    function drawUserPath(isDone = false) {
+    function drawActivePath(isDone = false) {
+      const currentBg = stage === 1 ? closedImg : openImg;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(rawCapturedImage, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(currentBg, 0, 0, canvas.width, canvas.height);
 
-      if (mouthPath.length < 2) return;
+      if (currentDrawingPath.length < 2) return;
 
       ctx.beginPath();
-      ctx.moveTo(mouthPath[0].x, mouthPath[0].y);
-      for (let i = 1; i < mouthPath.length; i++) {
-        ctx.lineTo(mouthPath[i].x, mouthPath[i].y);
+      ctx.moveTo(currentDrawingPath[0].x, currentDrawingPath[0].y);
+      for (let i = 1; i < currentDrawingPath.length; i++) {
+        ctx.lineTo(currentDrawingPath[i].x, currentDrawingPath[i].y);
       }
       if (isDone) ctx.closePath();
 
@@ -480,28 +508,54 @@
       }
     }
 
-    function clearMask() {
-      mouthPath = [];
-      maskCompleted = false;
-      genBtn.disabled = true;
+    function clearCurrentDrawing() {
+      currentDrawingPath = [];
+      confirmStepBtn.disabled = true;
+      const currentBg = stage === 1 ? closedImg : openImg;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(rawCapturedImage, 0, 0, canvas.width, canvas.height);
-      statusMsg.textContent = "Draw a loop around your mouth!";
+      ctx.drawImage(currentBg, 0, 0, canvas.width, canvas.height);
+    }
+
+    function confirmCurrentStep() {
+      if (stage === 1) {
+        closedMouthPath = [...currentDrawingPath];
+        currentDrawingPath = [];
+        stage = 2;
+
+        stepBanner.textContent = "Step 2: Open camera & take snapshot with mouth SLIGHTLY OPEN (teeth showing)!";
+        snapBtn.textContent = "Snapshot Open Face";
+        snapBtn.disabled = true;
+        drawControls.style.display = 'none';
+        toggleCamera();
+      } else if (stage === 3) {
+        openMouthPath = [...currentDrawingPath];
+        stage = 4;
+
+        stepBanner.textContent = "✅ Both face states locked! Ready to speak.";
+        drawControls.style.display = 'none';
+        genBtn.disabled = false;
+        genBtn.textContent = "Generate Video";
+        statusMsg.textContent = "Real teeth & mouth textures mapped successfully!";
+
+        // Reset canvas to closed portrait
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
+      }
     }
 
     async function executeSynthesis() {
       const text = scriptInput.value.trim();
-      if (!text || !rawCapturedImage || !maskCompleted) return;
+      if (!text || stage !== 4) return;
 
       genBtn.disabled = true;
-      statusMsg.textContent = "Synthesizing custom drawn mouth pixels...";
+      statusMsg.textContent = "Synthesizing authentic mouth visemes & speech...";
       outPlaceholder.style.display = "block";
       outPlaceholder.textContent = "Synthesizing...";
       outVideo.style.display = "none";
 
-      // Clear preview stroke before recording
+      // Clear any preview traces
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(rawCapturedImage, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
 
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       const audioCtx = new AudioContext();
@@ -534,7 +588,7 @@
         outVideo.src = URL.createObjectURL(blob);
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
-        statusMsg.textContent = "Video generated with smooth mouth animation!";
+        statusMsg.textContent = "Video generated with your real mouth & teeth!";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
@@ -542,26 +596,25 @@
 
       recorder.start();
 
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      mouthPath.forEach(pt => {
-        if (pt.x < minX) minX = pt.x;
-        if (pt.x > maxX) maxX = pt.x;
-        if (pt.y < minY) minY = pt.y;
-        if (pt.y > maxY) maxY = pt.y;
+      // Find center of open mouth to calculate squish/scale factor
+      let oMinX = Infinity, oMaxX = -Infinity, oMinY = Infinity, oMaxY = -Infinity;
+      openMouthPath.forEach(pt => {
+        if (pt.x < oMinX) oMinX = pt.x;
+        if (pt.x > oMaxX) oMaxX = pt.x;
+        if (pt.y < oMinY) oMinY = pt.y;
+        if (pt.y > oMaxY) oMaxY = pt.y;
       });
-      
-      // Seam splits naturally across upper 40% of the drawn selection
-      const mouthSeamY = minY + (maxY - minY) * 0.45;
-      const mouthHeight = maxY - minY;
+      const openCenterY = (oMinY + oMaxY) / 2;
+      const openHeight = oMaxY - oMinY;
 
       const phonemes = parseTextToPhonemes(text);
-      let targetMouthShift = 0;
-      let currentMouthShift = 0;
+      let targetVowelOpen = 0; // 0 to 1 scale
+      let currentVowelOpen = 0;
       let isRecording = true;
 
       function playPhoneme(index) {
         if (index >= phonemes.length) {
-          targetMouthShift = 0;
+          targetVowelOpen = 0;
           setTimeout(() => {
             isRecording = false;
             recorder.stop();
@@ -577,23 +630,23 @@
           const osc = audioCtx.createOscillator();
           osc.type = 'sawtooth';
 
-          const pitch = 135 + Math.sin(index * 0.5) * 12;
+          const pitch = 145 + Math.sin(index * 0.7) * 14;
           osc.frequency.setValueAtTime(pitch, audioCtx.currentTime);
-          osc.frequency.linearRampToValueAtTime(pitch * 0.95, audioCtx.currentTime + dur);
+          osc.frequency.linearRampToValueAtTime(pitch * 0.92, audioCtx.currentTime + dur);
 
           const f1 = audioCtx.createBiquadFilter();
           f1.type = 'bandpass';
           f1.frequency.setValueAtTime(pData.f1, audioCtx.currentTime);
-          f1.Q.setValueAtTime(3.5, audioCtx.currentTime);
+          f1.Q.setValueAtTime(4.0, audioCtx.currentTime);
 
           const f2 = audioCtx.createBiquadFilter();
           f2.type = 'bandpass';
           f2.frequency.setValueAtTime(pData.f2, audioCtx.currentTime);
-          f2.Q.setValueAtTime(4.5, audioCtx.currentTime);
+          f2.Q.setValueAtTime(5.0, audioCtx.currentTime);
 
           const gain = audioCtx.createGain();
           gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
-          gain.gain.linearRampToValueAtTime(0.24, audioCtx.currentTime + 0.02);
+          gain.gain.linearRampToValueAtTime(0.26, audioCtx.currentTime + 0.02);
           gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + dur);
 
           osc.connect(f1);
@@ -607,9 +660,9 @@
           osc.start();
           osc.stop(audioCtx.currentTime + dur);
 
-          targetMouthShift = Math.round(pData.open * (mouthHeight * 0.32));
+          targetVowelOpen = pData.open;
         } else {
-          targetMouthShift = 0;
+          targetVowelOpen = 0;
         }
 
         setTimeout(() => {
@@ -619,57 +672,44 @@
 
       playPhoneme(0);
 
+      // Deterministic puppet render loop
       function renderLoop() {
-        if (!isRecording && currentMouthShift < 0.2) return;
+        if (!isRecording && currentVowelOpen < 0.05) return;
 
-        currentMouthShift += (targetMouthShift - currentMouthShift) * 0.35;
+        currentVowelOpen += (targetVowelOpen - currentVowelOpen) * 0.35;
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 1. Static base face
-        ctx.drawImage(rawCapturedImage, 0, 0, canvas.width, canvas.height);
+        // 1. Draw base face (Closed portrait)
+        ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
 
-        // 2. Realistic dark-red mouth cavity (no solid black mustache block, no chalk bar!)
-        if (currentMouthShift > 1) {
+        // 2. If vowel > 0, blend in the real open-mouth texture (squished vertically to match vowel opening!)
+        if (currentVowelOpen > 0.05) {
           ctx.save();
+
+          // Clip to the user's closed mouth target boundary so it doesn't spill over
           ctx.beginPath();
-          ctx.moveTo(mouthPath[0].x, mouthPath[0].y);
-          for (let i = 1; i < mouthPath.length; i++) {
-            ctx.lineTo(mouthPath[i].x, mouthPath[i].y);
+          ctx.moveTo(closedMouthPath[0].x, closedMouthPath[0].y);
+          for (let i = 1; i < closedMouthPath.length; i++) {
+            ctx.lineTo(closedMouthPath[i].x, closedMouthPath[i].y);
           }
           ctx.closePath();
           ctx.clip();
 
-          // Smooth deep mouth cavity shading
-          const mouthGrad = ctx.createLinearGradient(0, mouthSeamY, 0, mouthSeamY + currentMouthShift + 4);
-          mouthGrad.addColorStop(0, '#1c0306');
-          mouthGrad.addColorStop(1, '#3b0a10');
-          ctx.fillStyle = mouthGrad;
-          ctx.fillRect(minX, mouthSeamY, maxX - minX, currentMouthShift + 6);
+          // Rule: If open mouth was too wide, squish scale factor down
+          // vertical scale adjusts proportionally to current phoneme
+          const vScale = Math.min(1.0, currentVowelOpen * 1.1);
+
+          ctx.translate(0, openCenterY);
+          ctx.scale(1.0, vScale);
+          ctx.translate(0, -openCenterY);
+
+          // Alpha blend real open-mouth picture directly over the lips
+          ctx.globalAlpha = Math.min(1.0, currentVowelOpen * 1.5);
+          ctx.drawImage(openImg, 0, 0, canvas.width, canvas.height);
 
           ctx.restore();
         }
-
-        // 3. Translate only the lower section of your drawn mouth downward
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, mouthSeamY, canvas.width, canvas.height - mouthSeamY);
-        ctx.clip();
-
-        ctx.beginPath();
-        ctx.moveTo(mouthPath[0].x, mouthPath[0].y);
-        for (let i = 1; i < mouthPath.length; i++) {
-          ctx.lineTo(mouthPath[i].x, mouthPath[i].y);
-        }
-        ctx.closePath();
-        ctx.clip();
-
-        ctx.drawImage(
-          rawCapturedImage,
-          0, 0, canvas.width, canvas.height,
-          0, currentMouthShift, canvas.width, canvas.height
-        );
-        ctx.restore();
 
         requestAnimationFrame(renderLoop);
       }
