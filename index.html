@@ -298,39 +298,36 @@
     const statusMsg = document.getElementById('statusMsg');
     const downloadBtn = document.getElementById('downloadBtn');
 
-    // RULE-BASED ENGLISH PHONEME & FORMANT DICTIONARY
-    // Each phoneme defines [F1 (Hz), F2 (Hz), OpenRatio (0-1), NoiseRatio (0-1)]
     const PHONEME_DATA = {
-      'AA': { f1: 730,  f2: 1090, open: 1.0, noise: 0.0 }, // "odd"
-      'AE': { f1: 660,  f2: 1720, open: 0.8, noise: 0.0 }, // "at"
-      'AH': { f1: 640,  f2: 1190, open: 0.7, noise: 0.0 }, // "hut"
-      'AO': { f1: 570,  f2: 840,  open: 0.7, noise: 0.0 }, // "ought"
-      'EH': { f1: 530,  f2: 1840, open: 0.6, noise: 0.0 }, // "ed"
-      'ER': { f1: 490,  f2: 1350, open: 0.4, noise: 0.0 }, // "hurt"
-      'IH': { f1: 390,  f2: 1990, open: 0.4, noise: 0.0 }, // "it"
-      'IY': { f1: 270,  f2: 2290, open: 0.3, noise: 0.0 }, // "eat"
-      'UH': { f1: 440,  f2: 1020, open: 0.4, noise: 0.0 }, // "hood"
-      'UW': { f1: 300,  f2: 870,  open: 0.3, noise: 0.0 }, // "two"
-      'B':  { f1: 200,  f2: 700,  open: 0.0, noise: 0.05 },
-      'D':  { f1: 250,  f2: 1600, open: 0.1, noise: 0.1 },
-      'G':  { f1: 250,  f2: 2000, open: 0.1, noise: 0.1 },
-      'P':  { f1: 200,  f2: 700,  open: 0.0, noise: 0.3 },
-      'T':  { f1: 250,  f2: 1800, open: 0.1, noise: 0.4 },
-      'K':  { f1: 250,  f2: 2100, open: 0.1, noise: 0.3 },
-      'S':  { f1: 200,  f2: 3000, open: 0.2, noise: 0.8 },
-      'Z':  { f1: 250,  f2: 2800, open: 0.2, noise: 0.4 },
-      'F':  { f1: 200,  f2: 1500, open: 0.1, noise: 0.6 },
-      'V':  { f1: 250,  f2: 1400, open: 0.2, noise: 0.3 },
-      'M':  { f1: 280,  f2: 900,  open: 0.0, noise: 0.0 },
-      'N':  { f1: 280,  f2: 1700, open: 0.1, noise: 0.0 },
-      'L':  { f1: 380,  f2: 1200, open: 0.3, noise: 0.0 },
-      'R':  { f1: 420,  f2: 1300, open: 0.4, noise: 0.0 },
-      'W':  { f1: 300,  f2: 700,  open: 0.2, noise: 0.0 },
-      'Y':  { f1: 280,  f2: 2200, open: 0.2, noise: 0.0 },
-      'SIL':{ f1: 200,  f2: 800,  open: 0.0, noise: 0.0 }
+      'AA': { f1: 700, f2: 1100, open: 1.0 },
+      'AE': { f1: 600, f2: 1600, open: 0.85 },
+      'AH': { f1: 580, f2: 1200, open: 0.75 },
+      'AO': { f1: 520, f2: 880,  open: 0.7 },
+      'EH': { f1: 500, f2: 1700, open: 0.65 },
+      'ER': { f1: 450, f2: 1300, open: 0.5 },
+      'IH': { f1: 400, f2: 1800, open: 0.45 },
+      'IY': { f1: 300, f2: 2100, open: 0.35 },
+      'UH': { f1: 420, f2: 1050, open: 0.45 },
+      'UW': { f1: 320, f2: 900,  open: 0.3 },
+      'B':  { f1: 220, f2: 700,  open: 0.05 },
+      'D':  { f1: 240, f2: 1500, open: 0.1 },
+      'G':  { f1: 240, f2: 1900, open: 0.1 },
+      'P':  { f1: 220, f2: 700,  open: 0.05 },
+      'T':  { f1: 240, f2: 1600, open: 0.1 },
+      'K':  { f1: 240, f2: 1900, open: 0.1 },
+      'S':  { f1: 220, f2: 2600, open: 0.2 },
+      'Z':  { f1: 240, f2: 2400, open: 0.2 },
+      'F':  { f1: 220, f2: 1400, open: 0.1 },
+      'V':  { f1: 240, f2: 1300, open: 0.2 },
+      'M':  { f1: 250, f2: 900,  open: 0.0 },
+      'N':  { f1: 250, f2: 1600, open: 0.1 },
+      'L':  { f1: 350, f2: 1200, open: 0.35 },
+      'R':  { f1: 380, f2: 1300, open: 0.4 },
+      'W':  { f1: 300, f2: 700,  open: 0.2 },
+      'Y':  { f1: 280, f2: 2100, open: 0.2 },
+      'SIL':{ f1: 200, f2: 800,  open: 0.0 }
     };
 
-    // Rule dictionary mapping words directly to phoneme sequences
     const WORD_PRONUNCIATION_DICT = {
       "hello": ["HH", "EH", "L", "OW"],
       "welcome": ["W", "EH", "L", "K", "AH", "M"],
@@ -370,13 +367,9 @@
       "code": ["K", "OW", "D"]
     };
 
-    // Deterministic fallback rule when a word is not in the dictionary
     function wordToPhonemes(word) {
       const clean = word.toLowerCase().replace(/[^a-z]/g, '');
-      if (WORD_PRONUNCIATION_DICT[clean]) {
-        return WORD_PRONUNCIATION_DICT[clean];
-      }
-      // Heuristic letter-to-sound rule
+      if (WORD_PRONUNCIATION_DICT[clean]) return WORD_PRONUNCIATION_DICT[clean];
       const list = [];
       for (let ch of clean) {
         if ('aeiou'.includes(ch)) {
@@ -490,10 +483,14 @@
       if (!text || !rawCapturedImage) return;
 
       genBtn.disabled = true;
-      statusMsg.textContent = "Parsing pronunciation rules & rendering frames...";
+      statusMsg.textContent = "Synthesizing pronunciation & recording clean frames...";
       outPlaceholder.style.display = "block";
       outPlaceholder.textContent = "Synthesizing...";
       outVideo.style.display = "none";
+
+      // 1. CLEAR THE GUIDE LINE IMMEDIATELY BEFORE RECORDING STARTS
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(rawCapturedImage, 0, 0, canvas.width, canvas.height);
 
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       const audioCtx = new AudioContext();
@@ -534,70 +531,63 @@
 
       recorder.start();
 
-      // Convert prompt into sequence of phonemes using pronunciation rules
       const words = text.split(/\s+/).filter(Boolean);
       let phonemeQueue = [];
 
       words.forEach(w => {
         const phs = wordToPhonemes(w);
         phonemeQueue.push(...phs);
-        phonemeQueue.push('SIL'); // gap between words
+        phonemeQueue.push('SIL');
       });
 
+      let targetMouthShift = 0;
       let currentMouthShift = 0;
-      let animating = true;
+      let isRecording = true;
 
-      // Rule-based vocal tract audio node architecture
       function synthesizePhonemeList(idx) {
         if (idx >= phonemeQueue.length) {
-          currentMouthShift = 0;
-          animating = false;
-          setTimeout(() => recorder.stop(), 400);
+          targetMouthShift = 0;
+          setTimeout(() => {
+            isRecording = false;
+            recorder.stop();
+          }, 400);
           return;
         }
 
         const phKey = phonemeQueue[idx];
         const data = PHONEME_DATA[phKey] || PHONEME_DATA['AH'];
-        const duration = phKey === 'SIL' ? 0.08 : 0.12;
+        const duration = phKey === 'SIL' ? 0.09 : 0.16;
 
         if (phKey !== 'SIL') {
-          // Acoustic glottal source (voice cords)
+          // Acoustic source
           const osc = audioCtx.createOscillator();
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(125, audioCtx.currentTime); // Pitch
+          osc.type = 'triangle'; // Smoother vocal warmth
+          osc.frequency.setValueAtTime(110, audioCtx.currentTime);
 
-          // Vocal tract resonant formants (F1, F2 bandpass filters)
+          // Vocal tract resonance
           const f1 = audioCtx.createBiquadFilter();
           f1.type = 'bandpass';
           f1.frequency.setValueAtTime(data.f1, audioCtx.currentTime);
-          f1.Q.setValueAtTime(5, audioCtx.currentTime);
-
-          const f2 = audioCtx.createBiquadFilter();
-          f2.type = 'bandpass';
-          f2.frequency.setValueAtTime(data.f2, audioCtx.currentTime);
-          f2.Q.setValueAtTime(7, audioCtx.currentTime);
+          f1.Q.setValueAtTime(3.5, audioCtx.currentTime);
 
           const gain = audioCtx.createGain();
           gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
-          gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.02);
+          gain.gain.linearRampToValueAtTime(0.35, audioCtx.currentTime + 0.03);
           gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + duration);
 
           osc.connect(f1);
-          osc.connect(f2);
           f1.connect(gain);
-          f2.connect(gain);
 
-          // Route to both speaker and video stream recorder
           gain.connect(audioDest);
           gain.connect(audioCtx.destination);
 
           osc.start();
           osc.stop(audioCtx.currentTime + duration);
 
-          // Rule: Jaw drops proportional to F1 vowel open ratio
-          currentMouthShift = Math.round(data.open * 13);
+          // Jaw displacement target (opens smoothly)
+          targetMouthShift = Math.round(data.open * 14);
         } else {
-          currentMouthShift = 0;
+          targetMouthShift = 0;
         }
 
         setTimeout(() => {
@@ -607,26 +597,29 @@
 
       synthesizePhonemeList(0);
 
-      // Render loop synchronizing jaw drop with current acoustic formant
+      // Smooth visual render loop (No laser line burned into video!)
       function renderLoop() {
-        if (!animating && currentMouthShift <= 0) return;
+        if (!isRecording && currentMouthShift < 0.5) return;
+
+        // Smooth easing interpolation for jaw movement
+        currentMouthShift += (targetMouthShift - currentMouthShift) * 0.35;
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Draw inner mouth cavity if mouth is open
-        if (currentMouthShift > 0) {
-          ctx.fillStyle = '#3a080e';
+        // 1. Draw mouth interior cavity so it reveals dark red inside instead of black void
+        if (currentMouthShift > 1) {
+          ctx.fillStyle = '#420a10';
           ctx.fillRect(0, detectedMouthY, canvas.width, currentMouthShift);
 
-          // Teeth line
-          ctx.fillStyle = '#f1f5f9';
-          ctx.fillRect(canvas.width * 0.38, detectedMouthY, canvas.width * 0.24, Math.min(3, currentMouthShift));
+          // White teeth strip
+          ctx.fillStyle = '#f8fafc';
+          ctx.fillRect(canvas.width * 0.36, detectedMouthY, canvas.width * 0.28, Math.min(3, currentMouthShift));
         }
 
-        // 1. Upper face fixed
+        // 2. Upper face fixed
         ctx.drawImage(rawCapturedImage, 0, 0, canvas.width, detectedMouthY, 0, 0, canvas.width, detectedMouthY);
 
-        // 2. Lower jaw displaced by acoustic opening value
+        // 3. Lower jaw displaced
         ctx.drawImage(
           rawCapturedImage, 
           0, detectedMouthY, canvas.width, canvas.height - detectedMouthY, 
