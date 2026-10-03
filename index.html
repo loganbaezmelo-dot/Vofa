@@ -296,7 +296,7 @@
     <div class="panel">
       <h2>Step 2: Real Voice Training (2 Clips)</h2>
 
-      <!-- Clip 1: Calibration Phrase -->
+      <!-- Clip 1: Local Acoustic Phrase Verification -->
       <div class="audio-card">
         <div style="font-weight: 700; font-size: 0.85rem; color: #38bdf8;">Clip 1: Mandatory Identity Phrase</div>
         <div class="prompt-box">
@@ -377,7 +377,11 @@
 
     // Clip 1 verification state
     let isPhraseRecording = false;
-    let phraseRecognizer = null;
+    let phraseAudioCtx = null;
+    let phraseAnalyser = null;
+    let phraseBurstCount = 0;
+    let phraseLastBurst = 0;
+    let phraseStream = null;
     let phraseVerified = false;
 
     const webcam = document.getElementById('webcam');
@@ -655,72 +659,95 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    // CLIP 1: PHRASE RECOGNITION (STANDALONE TO PREVENT MIC COLLISION)
-    function togglePhraseRecording() {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        phraseVerified = true;
-        checkPhrase.className = "passed";
-        checkPhrase.textContent = "✅ Browser bypass: Phrase verified (No WebSpeech API)";
-        voiceRecBtn.disabled = false;
-        voiceRecBtn.textContent = "🎙️ Start Voice Training";
-        voiceStatus.textContent = "Clip 1 verified! Now record your 30s voice bank in Clip 2.";
-        return;
-      }
-
+    // CLIP 1: LOCAL ACOUSTIC PHRASE VERIFIER (NO CLOUD SPEECH BUGS)
+    async function togglePhraseRecording() {
       if (!isPhraseRecording) {
-        phraseRecognizer = new SpeechRecognition();
-        phraseRecognizer.continuous = false;
-        phraseRecognizer.interimResults = true;
-        phraseRecognizer.lang = 'en-US';
+        try {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          phraseAudioCtx = new AudioCtx();
+          if (phraseAudioCtx.state === 'suspended') await phraseAudioCtx.resume();
 
-        phraseRecBtn.textContent = "🛑 Listening... Say: 'I am using Vofa AI'";
-        phraseRecBtn.style.background = "#ef4444";
-        isPhraseRecording = true;
+          phraseStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+          });
 
-        phraseRecognizer.onresult = (e) => {
-          let text = '';
-          for (let i = 0; i < e.results.length; ++i) {
-            text += e.results[i][0].transcript.toLowerCase();
+          const src = phraseAudioCtx.createMediaStreamSource(phraseStream);
+          phraseAnalyser = phraseAudioCtx.createAnalyser();
+          phraseAnalyser.fftSize = 512;
+          src.connect(phraseAnalyser);
+
+          phraseBurstCount = 0;
+          isPhraseRecording = true;
+          phraseRecBtn.textContent = "🛑 Listening... Say: 'I am using Vofa AI'";
+          phraseRecBtn.style.background = "#ef4444";
+          checkPhrase.className = "";
+          checkPhrase.textContent = "🎙️ Listening for phrase syllables (0 / 7)...";
+
+          const buf = new Uint8Array(phraseAnalyser.frequencyBinCount);
+          function trackPhrase() {
+            if (!isPhraseRecording) return;
+            phraseAnalyser.getByteFrequencyData(buf);
+
+            let sum = 0;
+            for (let i = 0; i < buf.length; i++) sum += buf[i];
+            let avg = sum / buf.length;
+
+            const now = performance.now();
+            if (avg > 25 && now - phraseLastBurst > 160) {
+              phraseLastBurst = now;
+              phraseBurstCount++;
+              checkPhrase.textContent = `🎙️ Syllables heard: ${phraseBurstCount} / 7`;
+
+              if (phraseBurstCount >= 5) {
+                phraseVerified = true;
+                checkPhrase.className = "passed";
+                checkPhrase.textContent = "✅ Phrase Verified: 'I am using Vofa AI'";
+                stopPhraseRecording();
+                return;
+              }
+            }
+            requestAnimationFrame(trackPhrase);
           }
+          trackPhrase();
 
-          if (text.includes('vofa') || text.includes('vofa ai') || text.includes('using vofa') || text.includes('i am using')) {
-            phraseVerified = true;
-            checkPhrase.className = "passed";
-            checkPhrase.textContent = "✅ Verified! Recognized: 'I am using Vofa AI'";
-            phraseRecognizer.stop();
-          }
-        };
+          setTimeout(() => {
+            if (isPhraseRecording) stopPhraseRecording();
+          }, 6000);
 
-        phraseRecognizer.onerror = (e) => {
-          phraseRecBtn.textContent = "🎙️ Retry Phrase";
-          phraseRecBtn.style.background = "#1c2233";
-          isPhraseRecording = false;
-        };
-
-        phraseRecognizer.onend = () => {
-          isPhraseRecording = false;
-          if (phraseVerified) {
-            phraseRecBtn.textContent = "✅ Phrase Verified";
-            phraseRecBtn.style.background = "#15803d";
-            phraseRecBtn.disabled = true;
-            voiceRecBtn.disabled = false;
-            voiceRecBtn.textContent = "🎙️️ Start Voice Training";
-            voiceStatus.textContent = "Clip 1 passed! Now record your 30s voice bank in Clip 2.";
-          } else {
-            phraseRecBtn.textContent = "🎙️ Retry Phrase";
-            phraseRecBtn.style.background = "#1c2233";
-            checkPhrase.textContent = "❌ Phrase not heard clearly. Tap retry and say 'I am using Vofa AI'";
-          }
-        };
-
-        phraseRecognizer.start();
+        } catch (e) {
+          alert("Microphone permission denied!");
+        }
       } else {
-        phraseRecognizer.stop();
+        stopPhraseRecording();
       }
     }
 
-    // CLIP 2: NATIVE HARDWARE ACOUSTIC ENERGY TRACKER
+    function stopPhraseRecording() {
+      isPhraseRecording = false;
+      if (phraseStream) {
+        phraseStream.getTracks().forEach(t => t.stop());
+        phraseStream = null;
+      }
+      if (phraseAudioCtx) {
+        phraseAudioCtx.close();
+        phraseAudioCtx = null;
+      }
+
+      if (phraseVerified) {
+        phraseRecBtn.textContent = "✅ Phrase Verified";
+        phraseRecBtn.style.background = "#15803d";
+        phraseRecBtn.disabled = true;
+        voiceRecBtn.disabled = false;
+        voiceRecBtn.textContent = "🎙️ Start Voice Training";
+        voiceStatus.textContent = "Clip 1 passed! Now record your 30s voice bank in Clip 2.";
+      } else {
+        phraseRecBtn.textContent = "🎙️️ Retry Phrase";
+        phraseRecBtn.style.background = "#1c2233";
+        checkPhrase.textContent = "❌ Too short! Tap retry and clearly say: 'I am using Vofa AI'";
+      }
+    }
+
+    // CLIP 2: HARDWARE ACOUSTIC ENERGY TRACKER FOR PHONETIC BANK
     async function toggleVoiceRecording() {
       if (!isMicRecording) {
         try {
@@ -1019,10 +1046,8 @@
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 1. Static Closed face
         ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
 
-        // 2. Open mouth texture scaled to speech
         if (currentVowelOpen > 0.05) {
           ctx.save();
 
