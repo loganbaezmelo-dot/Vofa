@@ -3,46 +3,157 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Vofa AI | Rule-Based Image AI</title>
+  <title>Vofa AI | You don't need AI for AI-generated videos!</title>
   <style>
     :root {
       --bg: #0b0d14;
       --card: #131722;
       --border: #23293d;
       --accent: #8b5cf6;
+      --accent-grad: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
       --text: #f8fafc;
       --muted: #94a3b8;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
-    body { background: var(--bg); color: var(--text); padding: 16px; overflow-x: hidden; }
-    
-    header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
-    .brand { font-size: 1.2rem; font-weight: 800; }
-    .brand span { color: var(--accent); }
-    .badge { font-size: 0.7rem; padding: 4px 8px; background: #1e293b; border-radius: 999px; color: #38bdf8; }
 
-    .hero { text-align: center; margin: 16px 0; }
-    .hero h1 { font-size: 1.3rem; margin-bottom: 4px; color: #fff; }
-    .hero p { font-size: 0.8rem; color: var(--muted); }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
 
-    .panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
-    h2 { font-size: 0.95rem; }
-
-    .viewport {
+    html, body {
       width: 100%;
-      aspect-ratio: 1 / 1;
-      background: #000;
+      overflow-x: hidden;
+      background-color: var(--bg);
+      color: var(--text);
+    }
+
+    /* header */
+    header {
+      width: 100%;
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .brand {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    .brand span {
+      background: var(--accent-grad);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .badge {
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      background: #1e293b;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: #38bdf8;
+    }
+
+    /* hero with gradient text */
+    .hero {
+      text-align: center;
+      padding: 28px 16px 16px;
+      width: 100%;
+    }
+
+    .hero h1 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      line-height: 1.25;
+      margin-bottom: 10px;
+      background: linear-gradient(135deg, #ffffff 20%, #a855f7 65%, #ec4899 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 2px 10px rgba(168, 85, 247, 0.25));
+    }
+
+    .hero p {
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.4;
+      padding: 0 10px;
+    }
+
+    /* main stack */
+    main {
+      width: 100%;
+      padding: 12px 16px 40px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .panel {
+      width: 100%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .panel h2 {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    /* media container */
+    .view-box {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #06070a;
+      border: 1px solid var(--border);
       border-radius: 8px;
-      overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
+      overflow: hidden;
       position: relative;
     }
-    video, canvas { width: 100%; height: 100%; object-fit: cover; }
-    #renderCanvas { display: none; }
+
+    video, canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    #renderCanvas {
+      display: none;
+    }
+
+    .placeholder-msg {
+      position: absolute;
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-align: center;
+      padding: 8px;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+    }
 
     button {
+      flex: 1;
       padding: 10px 12px;
       background: #1c2233;
       border: 1px solid var(--border);
@@ -51,20 +162,42 @@
       font-size: 0.85rem;
       border-radius: 8px;
       cursor: pointer;
+      transition: all 0.15s ease;
+      touch-action: manipulation;
     }
-    button.primary { background: var(--accent); border: none; }
-    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    button.primary {
+      background: var(--accent-grad);
+      border: none;
+      padding: 12px;
+      font-size: 0.95rem;
+      box-shadow: 0 4px 15px rgba(168, 85, 247, 0.3);
+    }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
 
     textarea {
       width: 100%;
-      height: 60px;
+      height: 80px;
       background: #090b11;
       border: 1px solid var(--border);
       border-radius: 8px;
       color: #fff;
-      padding: 8px;
-      font-size: 0.85rem;
+      padding: 10px;
+      font-size: 0.9rem;
       resize: none;
+      outline: none;
+    }
+
+    textarea:focus {
+      border-color: #a855f7;
     }
   </style>
 </head>
@@ -72,74 +205,103 @@
 
   <header>
     <div class="brand">VOFA <span>AI</span></div>
-    <div class="badge">Deterministic Rule-Based AI</div>
+    <div class="badge">Deterministic Vision AI</div>
   </header>
 
   <div class="hero">
     <h1>You don't need AI for AI-generated videos!</h1>
-    <p>Algorithmic computer vision & rule-based synthesis.</p>
+    <p>Turn your real face and voice into infinite automated videos.</p>
   </div>
 
-  <div class="panel">
-    <h2>1. Biometric Alignment</h2>
-    <div class="viewport">
-      <video id="webcam" autoplay playsinline muted></video>
-      <canvas id="renderCanvas" width="400" height="400"></canvas>
+  <main>
+    <!-- Biometrics Card -->
+    <div class="panel">
+      <h2>Face & Voice Source</h2>
+
+      <div class="view-box">
+        <video id="webcam" autoplay playsinline muted></video>
+        <canvas id="renderCanvas" width="400" height="400"></canvas>
+        <div class="placeholder-msg" id="camPlaceholder">Webcam feed offline</div>
+      </div>
+
+      <div class="row">
+        <button id="camBtn" onclick="toggleCamera()">Open Camera</button>
+        <button id="snapBtn" onclick="applyRuleEngine()" disabled>Scan Face Boundary</button>
+      </div>
+
+      <h2 style="margin-top: 4px;">Script Input</h2>
+      <textarea id="scriptInput">Look at that! Clean rule-based video generation running straight in the browser.</textarea>
+
+      <button class="primary" id="genBtn" onclick="executeSynthesis()" disabled>
+        Generate Video
+      </button>
     </div>
 
-    <div style="display: flex; gap: 8px;">
-      <button id="camBtn" onclick="initCam()" style="flex:1;">Open Camera</button>
-      <button id="snapBtn" onclick="applyRuleEngine()" style="flex:1;" disabled>Scan Face Boundary</button>
+    <!-- Output Card -->
+    <div class="panel">
+      <h2>Generated Output</h2>
+
+      <div class="view-box">
+        <div class="placeholder-msg" id="outPlaceholder">No generated video yet.</div>
+        <video id="outVideo" controls playsinline style="display: none;"></video>
+      </div>
+
+      <p id="statusMsg" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Awaiting biometric snapshot...</p>
+      <button id="downloadBtn" disabled onclick="downloadVid()">Download Output</button>
     </div>
-
-    <h2>2. Speech Script</h2>
-    <textarea id="scriptText">Look at that! Clean rule-based video generation running straight in the browser.</textarea>
-
-    <button class="primary" id="renderBtn" onclick="executeSynthesis()" disabled>
-      ⚡ Synthesize Output Clip
-    </button>
-  </div>
-
-  <div class="panel">
-    <h2>3. Video Output</h2>
-    <video id="resultPlayer" controls playsinline style="border-radius: 8px; display: none;"></video>
-    <p id="statusMsg" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Awaiting biometric snapshot...</p>
-  </div>
+  </main>
 
   <script>
-    let camStream = null;
+    let stream = null;
     let capturedImage = null;
-    let detectedMouthY = 250; // Dynamic rule coordinate
+    let detectedMouthY = 250;
 
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
     const ctx = canvas.getContext('2d');
+    const camPlaceholder = document.getElementById('camPlaceholder');
     const camBtn = document.getElementById('camBtn');
     const snapBtn = document.getElementById('snapBtn');
-    const renderBtn = document.getElementById('renderBtn');
-    const resultPlayer = document.getElementById('resultPlayer');
+    const genBtn = document.getElementById('genBtn');
+    const scriptInput = document.getElementById('scriptInput');
+    const outVideo = document.getElementById('outVideo');
+    const outPlaceholder = document.getElementById('outPlaceholder');
     const statusMsg = document.getElementById('statusMsg');
+    const downloadBtn = document.getElementById('downloadBtn');
 
-    async function initCam() {
-      camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-      webcam.srcObject = camStream;
-      snapBtn.disabled = false;
-      camBtn.disabled = true;
+    async function toggleCamera() {
+      if (!stream) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user" }
+          });
+          webcam.srcObject = stream;
+          camPlaceholder.style.display = 'none';
+          camBtn.textContent = 'Close Camera';
+          snapBtn.disabled = false;
+        } catch (e) {
+          alert("Couldn't open camera");
+        }
+      } else {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+        webcam.srcObject = null;
+        camPlaceholder.style.display = 'block';
+        camBtn.textContent = 'Open Camera';
+        snapBtn.disabled = true;
+      }
     }
 
-    // Rule-Based Image Processing Algorithm
     function applyRuleEngine() {
       canvas.width = 400;
       canvas.height = 400;
       ctx.drawImage(webcam, 0, 0, 400, 400);
 
-      // Computer Vision Rule: Scan luminance across lower 40% to detect lip crease
       const imgData = ctx.getImageData(0, 0, 400, 400);
       const data = imgData.data;
       let minBrightness = 255;
       let targetY = 250;
 
-      // Scan rows 210 to 310 along center column
       for (let y = 210; y < 310; y++) {
         let rowBrightness = 0;
         for (let x = 160; x < 240; x++) {
@@ -149,7 +311,6 @@
         }
         rowBrightness /= 80;
 
-        // Darkest horizontal seam rule
         if (rowBrightness < minBrightness) {
           minBrightness = rowBrightness;
           targetY = y;
@@ -160,34 +321,43 @@
       capturedImage = new Image();
       capturedImage.src = canvas.toDataURL('image/png');
 
-      camStream.getTracks().forEach(t => t.stop());
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
       webcam.style.display = 'none';
       canvas.style.display = 'block';
 
       snapBtn.textContent = `Seam Found: y=${detectedMouthY} ✓`;
-      renderBtn.disabled = false;
-      statusMsg.textContent = `Rule applied: Lip boundary isolated at y=${detectedMouthY}px`;
+      snapBtn.style.color = '#10b981';
+      snapBtn.style.borderColor = '#10b981';
+      genBtn.disabled = false;
+      statusMsg.textContent = `Rule applied: Lip boundary locked at y=${detectedMouthY}px`;
     }
 
     function executeSynthesis() {
-      const text = document.getElementById('scriptText').value;
+      const text = scriptInput.value.trim();
       if (!text || !capturedImage) return;
 
-      renderBtn.disabled = true;
-      statusMsg.textContent = "Executing rule-based audio-visual sync...";
+      genBtn.disabled = true;
+      statusMsg.textContent = "Synthesizing frames & audio...";
+      outPlaceholder.style.display = "block";
+      outPlaceholder.textContent = "Rendering...";
+      outVideo.style.display = "none";
 
       const utterance = new SpeechSynthesisUtterance(text);
-      const stream = canvas.captureStream(30);
-      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      const canvasStream = canvas.captureStream(30);
+      const recorder = new MediaRecorder(canvasStream, { mimeType: 'video/webm' });
       const chunks = [];
 
       recorder.ondataavailable = e => chunks.push(e.data);
       recorder.onstop = () => {
         const blob = new Blob(chunks, { type: 'video/webm' });
-        resultPlayer.src = URL.createObjectURL(blob);
-        resultPlayer.style.display = 'block';
+        outVideo.src = URL.createObjectURL(blob);
+        outPlaceholder.style.display = "none";
+        outVideo.style.display = "block";
         statusMsg.textContent = "Render complete via client rule engine!";
-        renderBtn.disabled = false;
+        genBtn.disabled = false;
+        downloadBtn.disabled = false;
+        outVideo.play();
       };
 
       recorder.start();
@@ -205,14 +375,10 @@
         if (!animating) return;
 
         ctx.clearRect(0, 0, 400, 400);
-
-        // Render stationary upper skull up to detected lip seam
         ctx.drawImage(capturedImage, 0, 0, 400, detectedMouthY, 0, 0, 400, detectedMouthY);
 
-        // Rule-based harmonic displacement
         const mouthShift = Math.sin(frame * 0.45) > 0 ? Math.sin(frame * 0.45) * 12 : 0;
 
-        // Render lower jaw translated along the rule vector
         ctx.drawImage(
           capturedImage, 
           0, detectedMouthY, 400, 400 - detectedMouthY, 
@@ -224,6 +390,10 @@
       }
 
       renderLoop();
+    }
+
+    function downloadVid() {
+      window.open(outVideo.src, '_blank');
     }
   </script>
 </body>
