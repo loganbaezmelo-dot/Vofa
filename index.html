@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vofa AI | You don't need AI for AI-generated videos!</title>
+  <style>
+    :root {
+      --bg: #0b0d14;
+      --card: #131722;
+      --border: #23293d;
+      --accent: #8b5cf6;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 20px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand {
+      font-size: 1.4rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    .brand span {
+      color: var(--accent);
+    }
+
+    .badge {
+      font-size: 0.8rem;
+      padding: 6px 14px;
+      background: #1e293b;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: #38bdf8;
+    }
+
+    /* Hero section */
+    .hero {
+      text-align: center;
+      padding: 48px 20px 24px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .hero h1 {
+      font-size: 2.2rem;
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #fff 40%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      font-size: 1.05rem;
+      color: var(--muted);
+    }
+
+    /* Studio Grid */
+    main {
+      flex: 1;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 20px 24px 48px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 800px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+      .hero h1 {
+        font-size: 1.8rem;
+      }
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .panel h2 {
+      font-size: 1.1rem;
+    }
+
+    .view-box {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #06070a;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .placeholder-msg {
+      position: absolute;
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+      padding: 12px;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+    }
+
+    button {
+      flex: 1;
+      padding: 11px 16px;
+      background: #1c2233;
+      border: 1px solid var(--border);
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.9rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    button:hover {
+      background: #252d42;
+      border-color: #3b4563;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border: none;
+    }
+
+    button.primary:hover {
+      background: #9d6ff7;
+    }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    textarea {
+      width: 100%;
+      height: 95px;
+      background: #090b11;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #fff;
+      padding: 12px;
+      font-size: 0.95rem;
+      resize: none;
+      outline: none;
+    }
+
+    textarea:focus {
+      border-color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">VOFA <span>AI</span></div>
+    <div class="badge">Live Studio</div>
+  </header>
+
+  <div class="hero">
+    <h1>You don't need AI for AI-generated videos!</h1>
+    <p>Turn your real face and voice into infinite automated videos.</p>
+  </div>
+
+  <main>
+    <!-- Left: Biometric Inputs -->
+    <div class="panel">
+      <h2>Face & Voice Source</h2>
+
+      <div class="view-box">
+        <video id="webcam" autoplay playsinline muted></video>
+        <div class="placeholder-msg" id="camPlaceholder">Webcam feed offline</div>
+      </div>
+
+      <div class="row">
+        <button id="camBtn" onclick="toggleCamera()">Turn On Camera</button>
+        <button id="lockFaceBtn" onclick="lockFace()" disabled>Lock Face</button>
+      </div>
+
+      <button id="micBtn" onclick="toggleMic()">Calibrate Voice Sample</button>
+
+      <h2>Video Prompt / Script</h2>
+      <textarea id="scriptInput" placeholder="Enter script to speak..."></textarea>
+
+      <button class="primary" id="genBtn" onclick="renderVideo()">
+        Generate Video
+      </button>
+    </div>
+
+    <!-- Right: Output -->
+    <div class="panel">
+      <h2>Generated Output</h2>
+
+      <div class="view-box" style="flex: 1; min-height: 280px;">
+        <div class="placeholder-msg" id="outPlaceholder">No generated video yet.</div>
+        <video id="outVideo" controls playsinline style="display: none;"></video>
+      </div>
+
+      <button id="downloadBtn" disabled onclick="downloadVid()">Download Output</button>
+    </div>
+  </main>
+
+  <script>
+    let stream = null;
+    const webcam = document.getElementById('webcam');
+    const camPlaceholder = document.getElementById('camPlaceholder');
+    const camBtn = document.getElementById('camBtn');
+    const lockFaceBtn = document.getElementById('lockFaceBtn');
+    const micBtn = document.getElementById('micBtn');
+    const scriptInput = document.getElementById('scriptInput');
+    const genBtn = document.getElementById('genBtn');
+    const outVideo = document.getElementById('outVideo');
+    const outPlaceholder = document.getElementById('outPlaceholder');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    async function toggleCamera() {
+      if (!stream) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          webcam.srcObject = stream;
+          camPlaceholder.style.display = 'none';
+          camBtn.textContent = 'Turn Off Camera';
+          lockFaceBtn.disabled = false;
+        } catch (e) {
+          alert("Couldn't open webcam");
+        }
+      } else {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+        webcam.srcObject = null;
+        camPlaceholder.style.display = 'block';
+        camBtn.textContent = 'Turn On Camera';
+        lockFaceBtn.disabled = true;
+      }
+    }
+
+    function lockFace() {
+      lockFaceBtn.textContent = 'Face Locked ✓';
+      lockFaceBtn.style.color = '#10b981';
+      lockFaceBtn.style.borderColor = '#10b981';
+    }
+
+    function toggleMic() {
+      micBtn.textContent = 'Voice Calibrated ✓';
+      micBtn.style.color = '#10b981';
+      micBtn.style.borderColor = '#10b981';
+    }
+
+    function renderVideo() {
+      if (!scriptInput.value.trim()) {
+        alert("Type a script first 😭");
+        return;
+      }
+
+      genBtn.disabled = true;
+      genBtn.textContent = "Synthesizing...";
+      outPlaceholder.style.display = "block";
+      outPlaceholder.textContent = "Rendering frames...";
+      outVideo.style.display = "none";
+
+      setTimeout(() => {
+        genBtn.disabled = false;
+        genBtn.textContent = "Generate Video";
+        outPlaceholder.style.display = "none";
+        outVideo.style.display = "block";
+        outVideo.src = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
+        outVideo.play();
+        downloadBtn.disabled = false;
+      }, 2000);
+    }
+
+    function downloadVid() {
+      window.open(outVideo.src, '_blank');
+    }
+  </script>
+</body>
+</html>
