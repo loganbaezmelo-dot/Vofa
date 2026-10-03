@@ -199,6 +199,23 @@
       color: #4ade80;
     }
 
+    /* Live VU Meter Bar */
+    .vu-container {
+      width: 100%;
+      height: 6px;
+      background: #1e293b;
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 4px 0;
+    }
+
+    .vu-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #38bdf8, #ec4899);
+      transition: width 0.05s ease;
+    }
+
     .timer {
       font-size: 1rem;
       font-weight: 800;
@@ -296,15 +313,20 @@
     <div class="panel">
       <h2>Step 2: Real Voice Training (2 Clips)</h2>
 
-      <!-- Clip 1: Local Cadence & Spectral Shift Verification -->
+      <!-- Clip 1: Local Cadence Verification -->
       <div class="audio-card">
         <div style="font-weight: 700; font-size: 0.85rem; color: #38bdf8;">Clip 1: Mandatory Identity Phrase</div>
         <div class="prompt-box">
           Press record and say clearly:<br>
           <b style="color: #f472b6; font-size: 0.95rem;">"I am using Vofa AI."</b>
         </div>
+
+        <div class="vu-container">
+          <div class="vu-bar" id="phraseVuBar"></div>
+        </div>
+
         <div class="checklist">
-          <span id="checkPhrase">❌ Phrase verification pending</span>
+          <span id="checkPhrase">❌ Phrase verification pending (Tap Record below)</span>
         </div>
         <div class="row">
           <button id="phraseRecBtn" onclick="togglePhraseRecording()">🎙️ Record Phrase</button>
@@ -320,6 +342,11 @@
         <div class="prompt-box">
           The quick brown fox jumps over the lazy dog. Today we are testing a completely rule-based browser video generation pipeline that isolates lips and extracts formant slices without using any external artificial intelligence APIs.
         </div>
+
+        <div class="vu-container">
+          <div class="vu-bar" id="bankVuBar"></div>
+        </div>
+
         <div class="checklist">
           <span id="checkTime">❌ Spoke for at least 30 seconds (0s / 30s)</span>
           <span id="checkWords">❌ Read enough speech (0 / 25 syllables detected)</span>
@@ -375,7 +402,7 @@
     let voicePeakCount = 0;
     let lastPeakTime = 0;
 
-    // Clip 1 smart acoustic verification state
+    // Clip 1 state
     let isPhraseRecording = false;
     let phraseAudioCtx = null;
     let phraseAnalyser = null;
@@ -383,8 +410,7 @@
     let phraseLastBurst = 0;
     let phraseStream = null;
     let phraseVerified = false;
-    let phraseSpectralBands = [];
-    let syllableTimestamps = [];
+    let phraseStartTime = 0;
 
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
@@ -408,6 +434,8 @@
     const checkPhrase = document.getElementById('checkPhrase');
     const checkTime = document.getElementById('checkTime');
     const checkWords = document.getElementById('checkWords');
+    const phraseVuBar = document.getElementById('phraseVuBar');
+    const bankVuBar = document.getElementById('bankVuBar');
 
     const PHONEMES = {
       'AA': { open: 1.0, dur: 0.17 },
@@ -661,7 +689,7 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    // CLIP 1: SMART ACOUSTIC PHRASE VERIFIER (Cadence & Spectral Vowel Tracking)
+    // CLIP 1: LIVE ACOUSTIC SYLLABLE VERIFIER WITH REAL-TIME FEEDBACK
     async function togglePhraseRecording() {
       if (!isPhraseRecording) {
         try {
@@ -675,80 +703,68 @@
 
           const src = phraseAudioCtx.createMediaStreamSource(phraseStream);
           phraseAnalyser = phraseAudioCtx.createAnalyser();
-          phraseAnalyser.fftSize = 512;
+          phraseAnalyser.fftSize = 256;
+          phraseAnalyser.smoothingTimeConstant = 0.2;
           src.connect(phraseAnalyser);
 
           phraseBurstCount = 0;
           phraseLastBurst = 0;
-          phraseSpectralBands = [];
-          syllableTimestamps = [];
+          phraseStartTime = performance.now();
           isPhraseRecording = true;
           phraseVerified = false;
 
           phraseRecBtn.textContent = "🛑 Listening... Say: 'I am using Vofa AI'";
           phraseRecBtn.style.background = "#ef4444";
           checkPhrase.className = "";
-          checkPhrase.textContent = "🎙️ Analyzing cadence & phonetics (0 / 7 syllables)...";
+          checkPhrase.textContent = "🎙️ Listening... Syllables detected: 0 / 5";
 
           const buf = new Uint8Array(phraseAnalyser.frequencyBinCount);
-          const binSize = phraseAudioCtx.sampleRate / phraseAnalyser.fftSize;
 
-          function trackPhraseSmart() {
+          function trackPhraseRealtime() {
             if (!isPhraseRecording) return;
             phraseAnalyser.getByteFrequencyData(buf);
 
-            let lowEnergy = 0;
-            let highEnergy = 0;
+            let sum = 0;
+            for (let i = 0; i < buf.length; i++) sum += buf[i];
+            let avg = sum / buf.length;
 
-            for (let i = 0; i < buf.length; i++) {
-              const freq = i * binSize;
-              if (freq >= 200 && freq <= 800) lowEnergy += buf[i];
-              if (freq >= 1800 && freq <= 3200) highEnergy += buf[i];
-            }
+            // Update live VU meter immediately so user knows mic is receiving audio
+            const vuPct = Math.min(100, Math.max(0, (avg / 70) * 100));
+            phraseVuBar.style.width = `${vuPct}%`;
 
-            let totalAvg = (lowEnergy + highEnergy) / buf.length;
             const now = performance.now();
-
-            if (totalAvg > 24 && now - phraseLastBurst > 170) {
+            // Sensitive trigger threshold (avg > 18) and minimum syllable gap (140ms)
+            if (avg > 18 && now - phraseLastBurst > 140) {
               phraseLastBurst = now;
               phraseBurstCount++;
-              syllableTimestamps.push(now);
 
-              phraseSpectralBands.push({
-                low: lowEnergy,
-                high: highEnergy,
-                ratio: highEnergy / (lowEnergy + 1)
-              });
+              // Always update the live UI text with the current count
+              checkPhrase.textContent = `🎙️ Syllables detected: ${phraseBurstCount} / 5 (Keep speaking...)`;
 
-              checkPhrase.textContent = `🎙️ Syllables: ${phraseBurstCount} / 7 (Cadence tracking...)`;
-
-              // "I am using Vofa AI" is 7 syllables (allow 6-8 for slight natural blending)
-              if (phraseBurstCount >= 6 && phraseBurstCount <= 8) {
-                const totalPhraseTime = (now - syllableTimestamps[0]) / 1000;
-                const validTiming = totalPhraseTime >= 1.2 && totalPhraseTime <= 4.0;
-                const lastSyllable = phraseSpectralBands[phraseSpectralBands.length - 1];
-                const hasBrightEnding = lastSyllable.ratio > 0.35 || lastSyllable.high > 250;
-
-                if (validTiming && hasBrightEnding) {
+              // "I am using Vofa AI" is 5 to 8 syllables
+              if (phraseBurstCount >= 5 && phraseBurstCount <= 9) {
+                const elapsed = (now - phraseStartTime) / 1000;
+                if (elapsed >= 0.8) {
                   phraseVerified = true;
                   checkPhrase.className = "passed";
-                  checkPhrase.textContent = "✅ Smart Match: Cadence & 'Vofa AI' phonetic profile confirmed!";
+                  checkPhrase.textContent = `✅ Phrase Verified! Detected ${phraseBurstCount} syllables ('I am using Vofa AI')`;
                   stopPhraseRecording();
                   return;
                 }
-              } else if (phraseBurstCount > 8) {
-                checkPhrase.textContent = "❌ Too many words detected! Say strictly 'I am using Vofa AI'";
-                setTimeout(stopPhraseRecording, 500);
+              } else if (phraseBurstCount > 10) {
+                checkPhrase.textContent = "❌ Too many words detected! Say only 'I am using Vofa AI'";
+                setTimeout(stopPhraseRecording, 400);
                 return;
               }
             }
-            requestAnimationFrame(trackPhraseSmart);
+            requestAnimationFrame(trackPhraseRealtime);
           }
-          trackPhraseSmart();
+          trackPhraseRealtime();
 
+          // 9-second generous listening window
           setTimeout(() => {
             if (isPhraseRecording) stopPhraseRecording();
-          }, 6000);
+          }, 9000);
 
         } catch (e) {
           alert("Microphone permission denied!");
@@ -760,6 +776,7 @@
 
     function stopPhraseRecording() {
       isPhraseRecording = false;
+      phraseVuBar.style.width = '0%';
       if (phraseStream) {
         phraseStream.getTracks().forEach(t => t.stop());
         phraseStream = null;
@@ -779,7 +796,7 @@
       } else {
         phraseRecBtn.textContent = "🎙️ Retry Phrase";
         phraseRecBtn.style.background = "#1c2233";
-        checkPhrase.textContent = "❌ Verification failed. Speak clearly at normal pace: 'I am using Vofa AI'";
+        checkPhrase.textContent = `❌ Detected ${phraseBurstCount} syllables. Tap retry and say: 'I am using Vofa AI'`;
       }
     }
 
@@ -797,7 +814,8 @@
 
           const source = audioContext.createMediaStreamSource(micStream);
           analyserNode = audioContext.createAnalyser();
-          analyserNode.fftSize = 512;
+          analyserNode.fftSize = 256;
+          analyserNode.smoothingTimeConstant = 0.2;
           source.connect(analyserNode);
 
           micChunks = [];
@@ -817,6 +835,7 @@
           micMediaRecorder.onstop = async () => {
             micStream.getTracks().forEach(t => t.stop());
             clearInterval(recTimerInterval);
+            bankVuBar.style.width = '0%';
 
             voiceStatus.textContent = "Processing audio, removing noise & slicing phonemes...";
             const rawBlob = new Blob(micChunks, { type: 'audio/webm' });
@@ -842,8 +861,12 @@
             for (let i = 0; i < buffer.length; i++) sum += buffer[i];
             let average = sum / buffer.length;
 
+            // Live VU Meter update
+            const vuPct = Math.min(100, Math.max(0, (average / 70) * 100));
+            bankVuBar.style.width = `${vuPct}%`;
+
             const now = performance.now();
-            if (average > 25 && now - lastPeakTime > 170) {
+            if (average > 20 && now - lastPeakTime > 150) {
               lastPeakTime = now;
               voicePeakCount++;
 
