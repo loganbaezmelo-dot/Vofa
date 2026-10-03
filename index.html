@@ -225,7 +225,7 @@
 
   <header>
     <div class="brand">VOFA <span>AI</span></div>
-    <div class="badge">Deterministic Vision AI</div>
+    <div class="badge">Rule-Based Phoneme Synthesizer</div>
   </header>
 
   <div class="hero">
@@ -250,14 +250,14 @@
 
       <div class="slider-box" id="sliderBox">
         <label>
-          <span>Drag red line to your actual mouth line:</span>
+          <span>Drag line directly to your mouth seam:</span>
           <b id="seamLabel" style="color: #ec4899;">y=112px</b>
         </label>
         <input type="range" id="mouthSlider" min="20" max="210" value="112" oninput="updateSeam(this.value)">
       </div>
 
       <h2 style="margin-top: 4px;">Script Input</h2>
-      <textarea id="scriptInput">Look at that! Clean rule-based video generation running straight in the browser.</textarea>
+      <textarea id="scriptInput">hello welcome to vofa ai rule based speech generator</textarea>
 
       <button class="primary" id="genBtn" onclick="executeSynthesis()" disabled>
         Generate Video
@@ -278,8 +278,7 @@
   </main>
 
   <script>
-    let videoStream = null;
-    let micStream = null;
+    let stream = null;
     let rawCapturedImage = null;
     let detectedMouthY = 112;
 
@@ -299,21 +298,107 @@
     const statusMsg = document.getElementById('statusMsg');
     const downloadBtn = document.getElementById('downloadBtn');
 
+    // RULE-BASED ENGLISH PHONEME & FORMANT DICTIONARY
+    // Each phoneme defines [F1 (Hz), F2 (Hz), OpenRatio (0-1), NoiseRatio (0-1)]
+    const PHONEME_DATA = {
+      'AA': { f1: 730,  f2: 1090, open: 1.0, noise: 0.0 }, // "odd"
+      'AE': { f1: 660,  f2: 1720, open: 0.8, noise: 0.0 }, // "at"
+      'AH': { f1: 640,  f2: 1190, open: 0.7, noise: 0.0 }, // "hut"
+      'AO': { f1: 570,  f2: 840,  open: 0.7, noise: 0.0 }, // "ought"
+      'EH': { f1: 530,  f2: 1840, open: 0.6, noise: 0.0 }, // "ed"
+      'ER': { f1: 490,  f2: 1350, open: 0.4, noise: 0.0 }, // "hurt"
+      'IH': { f1: 390,  f2: 1990, open: 0.4, noise: 0.0 }, // "it"
+      'IY': { f1: 270,  f2: 2290, open: 0.3, noise: 0.0 }, // "eat"
+      'UH': { f1: 440,  f2: 1020, open: 0.4, noise: 0.0 }, // "hood"
+      'UW': { f1: 300,  f2: 870,  open: 0.3, noise: 0.0 }, // "two"
+      'B':  { f1: 200,  f2: 700,  open: 0.0, noise: 0.05 },
+      'D':  { f1: 250,  f2: 1600, open: 0.1, noise: 0.1 },
+      'G':  { f1: 250,  f2: 2000, open: 0.1, noise: 0.1 },
+      'P':  { f1: 200,  f2: 700,  open: 0.0, noise: 0.3 },
+      'T':  { f1: 250,  f2: 1800, open: 0.1, noise: 0.4 },
+      'K':  { f1: 250,  f2: 2100, open: 0.1, noise: 0.3 },
+      'S':  { f1: 200,  f2: 3000, open: 0.2, noise: 0.8 },
+      'Z':  { f1: 250,  f2: 2800, open: 0.2, noise: 0.4 },
+      'F':  { f1: 200,  f2: 1500, open: 0.1, noise: 0.6 },
+      'V':  { f1: 250,  f2: 1400, open: 0.2, noise: 0.3 },
+      'M':  { f1: 280,  f2: 900,  open: 0.0, noise: 0.0 },
+      'N':  { f1: 280,  f2: 1700, open: 0.1, noise: 0.0 },
+      'L':  { f1: 380,  f2: 1200, open: 0.3, noise: 0.0 },
+      'R':  { f1: 420,  f2: 1300, open: 0.4, noise: 0.0 },
+      'W':  { f1: 300,  f2: 700,  open: 0.2, noise: 0.0 },
+      'Y':  { f1: 280,  f2: 2200, open: 0.2, noise: 0.0 },
+      'SIL':{ f1: 200,  f2: 800,  open: 0.0, noise: 0.0 }
+    };
+
+    // Rule dictionary mapping words directly to phoneme sequences
+    const WORD_PRONUNCIATION_DICT = {
+      "hello": ["HH", "EH", "L", "OW"],
+      "welcome": ["W", "EH", "L", "K", "AH", "M"],
+      "to": ["T", "UW"],
+      "vofa": ["V", "OW", "F", "AA"],
+      "ai": ["EY", "AY"],
+      "you": ["Y", "UW"],
+      "dont": ["D", "OW", "N", "T"],
+      "need": ["N", "IY", "D"],
+      "for": ["F", "AO", "R"],
+      "generated": ["JH", "EH", "N", "ER", "EY", "T", "IH", "D"],
+      "videos": ["V", "IH", "D", "IY", "OW", "Z"],
+      "video": ["V", "IH", "D", "IY", "OW"],
+      "rule": ["R", "UW", "L"],
+      "based": ["B", "EY", "S", "T"],
+      "look": ["L", "UH", "K"],
+      "at": ["AE", "T"],
+      "that": ["DH", "AE", "T"],
+      "this": ["DH", "IH", "S"],
+      "is": ["IH", "Z"],
+      "a": ["EY"],
+      "the": ["DH", "AH"],
+      "clean": ["K", "L", "IY", "N"],
+      "running": ["R", "AH", "N", "IH", "NG"],
+      "straight": ["S", "T", "R", "EY", "T"],
+      "in": ["IH", "N"],
+      "browser": ["B", "R", "AW", "Z", "ER"],
+      "speech": ["S", "P", "IY", "CH"],
+      "generator": ["JH", "EH", "N", "ER", "EY", "T", "ER"],
+      "my": ["M", "AY"],
+      "face": ["F", "EY", "S"],
+      "and": ["AE", "N", "D"],
+      "voice": ["V", "OY", "S"],
+      "it": ["IH", "T"],
+      "works": ["W", "ER", "K", "S"],
+      "pure": ["P", "Y", "UH", "R"],
+      "code": ["K", "OW", "D"]
+    };
+
+    // Deterministic fallback rule when a word is not in the dictionary
+    function wordToPhonemes(word) {
+      const clean = word.toLowerCase().replace(/[^a-z]/g, '');
+      if (WORD_PRONUNCIATION_DICT[clean]) {
+        return WORD_PRONUNCIATION_DICT[clean];
+      }
+      // Heuristic letter-to-sound rule
+      const list = [];
+      for (let ch of clean) {
+        if ('aeiou'.includes(ch)) {
+          if (ch === 'a') list.push('AE');
+          else if (ch === 'e') list.push('EH');
+          else if (ch === 'i') list.push('IH');
+          else if (ch === 'o') list.push('AA');
+          else if (ch === 'u') list.push('AH');
+        } else {
+          list.push(ch.toUpperCase());
+        }
+      }
+      return list.length ? list : ['SIL'];
+    }
+
     async function toggleCamera() {
-      if (!videoStream) {
+      if (!stream) {
         try {
-          // Request camera and microphone access upfront so audio can be recorded cleanly
-          videoStream = await navigator.mediaDevices.getUserMedia({
+          stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
           });
-          
-          try {
-            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          } catch(e) {
-            console.warn("Microphone not available, video will render without mic track");
-          }
-
-          webcam.srcObject = videoStream;
+          webcam.srcObject = stream;
           await webcam.play();
           camPlaceholder.style.display = 'none';
           camBtn.textContent = 'Close Camera';
@@ -322,8 +407,8 @@
           alert("Couldn't open camera");
         }
       } else {
-        videoStream.getTracks().forEach(t => t.stop());
-        videoStream = null;
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
         webcam.srcObject = null;
         camPlaceholder.style.display = 'block';
         camBtn.textContent = 'Open Camera';
@@ -333,7 +418,7 @@
 
     function freezePortrait() {
       if (!webcam.videoWidth || webcam.videoWidth === 0) {
-        alert("Camera is still warming up, try in 1 sec 😭");
+        alert("Camera is warming up, try in 1 sec 😭");
         return;
       }
 
@@ -349,7 +434,7 @@
         sliderBox.style.display = 'flex';
 
         mouthSlider.max = canvas.height - 10;
-        detectedMouthY = Math.round(canvas.height * 0.55);
+        detectedMouthY = Math.round(canvas.height * 0.52);
         mouthSlider.value = detectedMouthY;
         
         redrawPreviewGuide();
@@ -361,9 +446,9 @@
       };
       rawCapturedImage.src = canvas.toDataURL('image/jpeg', 0.95);
 
-      if (videoStream) {
-        videoStream.getTracks().forEach(t => t.stop());
-        videoStream = null;
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
       }
     }
 
@@ -400,35 +485,48 @@
       ctx.setLineDash([]);
     }
 
-    function executeSynthesis() {
+    async function executeSynthesis() {
       const text = scriptInput.value.trim();
       if (!text || !rawCapturedImage) return;
 
       genBtn.disabled = true;
-      statusMsg.textContent = "Synthesizing frames & audio...";
+      statusMsg.textContent = "Parsing pronunciation rules & rendering frames...";
       outPlaceholder.style.display = "block";
-      outPlaceholder.textContent = "Rendering...";
+      outPlaceholder.textContent = "Synthesizing...";
       outVideo.style.display = "none";
 
-      const canvasStream = canvas.captureStream(30);
-      
-      // Combine canvas video + microphone audio track if available
-      const tracks = [...canvasStream.getVideoTracks()];
-      if (micStream && micStream.getAudioTracks().length > 0) {
-        tracks.push(micStream.getAudioTracks()[0]);
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioContext();
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
       }
 
-      const combinedStream = new MediaStream(tracks);
-      const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
+      const audioDest = audioCtx.createMediaStreamDestination();
+      const canvasStream = canvas.captureStream(30);
+
+      const mergedStream = new MediaStream([
+        ...canvasStream.getVideoTracks(),
+        ...audioDest.stream.getAudioTracks()
+      ]);
+
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+        ? 'video/webm;codecs=vp8,opus'
+        : 'video/webm';
+
+      const recorder = new MediaRecorder(mergedStream, { mimeType });
       const chunks = [];
 
-      recorder.ondataavailable = e => chunks.push(e.data);
+      recorder.ondataavailable = e => {
+        if (e.data && e.data.size > 0) chunks.push(e.data);
+      };
+
       recorder.onstop = () => {
+        audioCtx.close();
         const blob = new Blob(chunks, { type: 'video/webm' });
         outVideo.src = URL.createObjectURL(blob);
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
-        statusMsg.textContent = "Render complete! Mouth synced without black void.";
+        statusMsg.textContent = "Synthesized video with embedded audio ready!";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
@@ -436,45 +534,105 @@
 
       recorder.start();
 
-      const utterance = new SpeechSynthesisUtterance(text);
-      window.speechSynthesis.speak(utterance);
+      // Convert prompt into sequence of phonemes using pronunciation rules
+      const words = text.split(/\s+/).filter(Boolean);
+      let phonemeQueue = [];
 
-      let frame = 0;
+      words.forEach(w => {
+        const phs = wordToPhonemes(w);
+        phonemeQueue.push(...phs);
+        phonemeQueue.push('SIL'); // gap between words
+      });
+
+      let currentMouthShift = 0;
       let animating = true;
 
-      utterance.onend = () => {
-        animating = false;
-        setTimeout(() => recorder.stop(), 300);
-      };
+      // Rule-based vocal tract audio node architecture
+      function synthesizePhonemeList(idx) {
+        if (idx >= phonemeQueue.length) {
+          currentMouthShift = 0;
+          animating = false;
+          setTimeout(() => recorder.stop(), 400);
+          return;
+        }
 
+        const phKey = phonemeQueue[idx];
+        const data = PHONEME_DATA[phKey] || PHONEME_DATA['AH'];
+        const duration = phKey === 'SIL' ? 0.08 : 0.12;
+
+        if (phKey !== 'SIL') {
+          // Acoustic glottal source (voice cords)
+          const osc = audioCtx.createOscillator();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(125, audioCtx.currentTime); // Pitch
+
+          // Vocal tract resonant formants (F1, F2 bandpass filters)
+          const f1 = audioCtx.createBiquadFilter();
+          f1.type = 'bandpass';
+          f1.frequency.setValueAtTime(data.f1, audioCtx.currentTime);
+          f1.Q.setValueAtTime(5, audioCtx.currentTime);
+
+          const f2 = audioCtx.createBiquadFilter();
+          f2.type = 'bandpass';
+          f2.frequency.setValueAtTime(data.f2, audioCtx.currentTime);
+          f2.Q.setValueAtTime(7, audioCtx.currentTime);
+
+          const gain = audioCtx.createGain();
+          gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+          gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.02);
+          gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+          osc.connect(f1);
+          osc.connect(f2);
+          f1.connect(gain);
+          f2.connect(gain);
+
+          // Route to both speaker and video stream recorder
+          gain.connect(audioDest);
+          gain.connect(audioCtx.destination);
+
+          osc.start();
+          osc.stop(audioCtx.currentTime + duration);
+
+          // Rule: Jaw drops proportional to F1 vowel open ratio
+          currentMouthShift = Math.round(data.open * 13);
+        } else {
+          currentMouthShift = 0;
+        }
+
+        setTimeout(() => {
+          synthesizePhonemeList(idx + 1);
+        }, duration * 1000);
+      }
+
+      synthesizePhonemeList(0);
+
+      // Render loop synchronizing jaw drop with current acoustic formant
       function renderLoop() {
-        if (!animating) return;
+        if (!animating && currentMouthShift <= 0) return;
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        const mouthShift = Math.sin(frame * 0.45) > 0 ? Math.sin(frame * 0.45) * 11 : 0;
+        // Draw inner mouth cavity if mouth is open
+        if (currentMouthShift > 0) {
+          ctx.fillStyle = '#3a080e';
+          ctx.fillRect(0, detectedMouthY, canvas.width, currentMouthShift);
 
-        // 1. Draw mouth interior cavity so it's not a pitch black void
-        if (mouthShift > 0) {
-          ctx.fillStyle = '#3a080e'; // deep mouth cavity shadow
-          ctx.fillRect(0, detectedMouthY, canvas.width, mouthShift);
-
-          // Subtle teeth line
+          // Teeth line
           ctx.fillStyle = '#f1f5f9';
-          ctx.fillRect(canvas.width * 0.38, detectedMouthY, canvas.width * 0.24, Math.min(3, mouthShift));
+          ctx.fillRect(canvas.width * 0.38, detectedMouthY, canvas.width * 0.24, Math.min(3, currentMouthShift));
         }
 
-        // 2. Fixed upper skull
+        // 1. Upper face fixed
         ctx.drawImage(rawCapturedImage, 0, 0, canvas.width, detectedMouthY, 0, 0, canvas.width, detectedMouthY);
 
-        // 3. Moving lower jaw
+        // 2. Lower jaw displaced by acoustic opening value
         ctx.drawImage(
           rawCapturedImage, 
           0, detectedMouthY, canvas.width, canvas.height - detectedMouthY, 
-          0, detectedMouthY + mouthShift, canvas.width, canvas.height - detectedMouthY
+          0, detectedMouthY + currentMouthShift, canvas.width, canvas.height - detectedMouthY
         );
 
-        frame++;
         requestAnimationFrame(renderLoop);
       }
 
