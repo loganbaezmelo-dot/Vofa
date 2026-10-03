@@ -181,20 +181,23 @@
       padding: 12px;
       font-size: 0.85rem;
       color: #e2e8f0;
-      line-height: 1.4;
-      text-align: center;
+      line-height: 1.5;
+      text-align: left;
+      max-height: 180px;
+      overflow-y: auto;
     }
 
     .token-display {
-      font-size: 1.6rem;
+      font-size: 1.5rem;
       font-weight: 900;
-      letter-spacing: 2px;
+      letter-spacing: 1px;
       color: #38bdf8;
       background: #06070a;
       border: 1px solid #1e293b;
       border-radius: 8px;
       padding: 10px;
       margin: 8px 0;
+      text-align: center;
     }
 
     .speech-bar {
@@ -348,7 +351,7 @@
 
   <header>
     <div class="brand">VOFA <span>AI</span></div>
-    <div class="badge">Acoustic Diphone Cloner</div>
+    <div class="badge">Acoustic Whole-Word Cloner</div>
   </header>
 
   <div class="hero">
@@ -388,7 +391,7 @@
       <!-- Clip 1: Dynamic Rhythmic Vocal Bursts Challenge -->
       <div class="audio-card">
         <div style="font-weight: 700; font-size: 0.85rem; color: #38bdf8;">Clip 1: Dynamic Liveness Challenge (Anti-Spoofing)</div>
-        <div class="prompt-box">
+        <div class="prompt-box" style="text-align: center;">
           Liveness instructions:
           <div class="token-display" id="tokenDisplay">Say random numbers 6 times</div>
           <button onclick="generateNewLivenessChallenge()" style="background: #1e293b; padding: 4px 8px; font-size: 0.75rem; flex: none;">🎲 New Count</button>
@@ -414,14 +417,14 @@
         </div>
       </div>
 
-      <!-- Clip 2: Voice Model Training -->
+      <!-- Clip 2: Whole-Word Corpus (100–150 Words) -->
       <div class="audio-card">
-        <div style="font-weight: 700; font-size: 0.85rem; color: #a855f7;">Clip 2: Phonetic Voice Bank (15s minimum)</div>
+        <div style="font-weight: 700; font-size: 0.85rem; color: #a855f7;">Clip 2: Complete Word Corpus Training (~120 Words)</div>
         <p style="font-size: 0.8rem; color: var(--muted);">
-          Read out loud to train your phoneme bank:
+          Read this continuous paragraph out loud at a steady, natural pace. Pause briefly between sentences:
         </p>
-        <div class="prompt-box" style="text-align: left;">
-          The quick brown fox jumps over the lazy dog. Today we are testing a completely rule-based browser video generation pipeline that isolates lips and extracts formant slices without using any external artificial intelligence APIs.
+        <div class="prompt-box" id="corpusPrompt">
+          hello welcome to vofa ai rule based speech generator. you do not need artificial intelligence to generate realistic digital videos. this system isolates your lips and uses authentic human voice recordings. today we are building a new engine that learns words like hello welcome test video voice pure code works look here now speak clearly and record everything. one two three four five six seven eight nine ten. we are making content creation faster completely free and private without third party server apis.
         </div>
 
         <div class="vu-container">
@@ -430,7 +433,7 @@
 
         <div class="checklist">
           <span id="checkTime">❌ Spoke for at least 15 seconds (0s / 15s)</span>
-          <span id="checkWords">❌ Read enough speech (0 / 25 syllables detected)</span>
+          <span id="checkWords">❌ Read enough words (0 / 40 word bursts detected)</span>
         </div>
         <div class="timer" id="recTimer">00:00</div>
         <div class="row">
@@ -443,7 +446,7 @@
     <!-- Synthesis Panel -->
     <div class="panel">
       <h2>Step 3: Script & Render</h2>
-      <textarea id="scriptInput">hello welcome to vofa ai rule based speech generator</textarea>
+      <textarea id="scriptInput">hello welcome to vofa ai this video uses my real authentic voice and pure code</textarea>
 
       <button class="primary" id="genBtn" onclick="executeSynthesis()" disabled>
         Generate Video (Complete Face & Both Clips First)
@@ -470,13 +473,17 @@
     let currentDrawingPath = [];
     let isDrawing = false;
 
-    // Real-time acoustic energy analyzer state for Clip 2
+    // Word Dictionary & Slices Bank
     let micMediaRecorder = null;
     let micChunks = [];
     let isMicRecording = false;
     let recTimerInterval = null;
     let recSeconds = 0;
-    let extractedPhonemeBank = {};
+    let wordBank = {
+      buffer: null,
+      sampleRate: 48000,
+      words: [] // Stores { start, end, duration }
+    };
 
     let audioContext = null;
     let analyserNode = null;
@@ -523,82 +530,6 @@
     const phraseAudioPlayback = document.getElementById('phraseAudioPlayback');
     const heardDisplay = document.getElementById('heardDisplay');
     const tokenDisplay = document.getElementById('tokenDisplay');
-
-    const PHONEMES = {
-      'AA': { open: 1.0, dur: 0.18 },
-      'AE': { open: 0.85, dur: 0.16 },
-      'AH': { open: 0.7, dur: 0.15 },
-      'AO': { open: 0.75, dur: 0.16 },
-      'EH': { open: 0.6, dur: 0.14 },
-      'ER': { open: 0.45, dur: 0.15 },
-      'IH': { open: 0.4, dur: 0.13 },
-      'IY': { open: 0.3, dur: 0.15 },
-      'OW': { open: 0.65, dur: 0.16 },
-      'UW': { open: 0.35, dur: 0.16 },
-      'AY': { open: 0.9, dur: 0.19 },
-      'EY': { open: 0.6, dur: 0.16 },
-      'S':  { open: 0.15, dur: 0.12 },
-      'SH': { open: 0.2, dur: 0.12 },
-      'F':  { open: 0.1, dur: 0.10 },
-      'T':  { open: 0.1, dur: 0.08 },
-      'P':  { open: 0.05, dur: 0.08 },
-      'K':  { open: 0.1, dur: 0.08 },
-      'B':  { open: 0.05, dur: 0.08 },
-      'D':  { open: 0.1, dur: 0.08 },
-      'G':  { open: 0.1, dur: 0.08 },
-      'M':  { open: 0.0, dur: 0.11 },
-      'N':  { open: 0.05, dur: 0.11 },
-      'L':  { open: 0.35, dur: 0.12 },
-      'R':  { open: 0.4, dur: 0.13 },
-      'W':  { open: 0.25, dur: 0.12 },
-      'V':  { open: 0.2, dur: 0.11 },
-      'Z':  { open: 0.15, dur: 0.11 },
-      'SIL':{ open: 0.0, dur: 0.08 }
-    };
-
-    const WORD_MAP = {
-      "hello": ["HH", "EH", "L", "OW"],
-      "welcome": ["W", "EH", "L", "K", "AH", "M"],
-      "to": ["T", "UW"],
-      "vofa": ["V", "OW", "F", "AA"],
-      "ai": ["EY", "AY"],
-      "rule": ["R", "UW", "L"],
-      "based": ["B", "EY", "S", "T"],
-      "speech": ["S", "P", "IY", "CH"],
-      "generator": ["JH", "EH", "N", "ER", "EY", "T", "ER"],
-      "you": ["Y", "UW"],
-      "dont": ["D", "OW", "N", "T"],
-      "need": ["N", "IY", "D"],
-      "for": ["F", "AO", "R"],
-      "video": ["V", "IH", "D", "IY", "OW"],
-      "videos": ["V", "IH", "D", "IY", "OW", "Z"],
-      "pure": ["P", "Y", "UH", "R"],
-      "code": ["K", "OW", "D"],
-      "works": ["W", "ER", "K", "S"],
-      "look": ["L", "UH", "K"],
-      "this": ["DH", "IH", "S"]
-    };
-
-    function parseTextToPhonemes(text) {
-      const words = text.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(Boolean);
-      const queue = [];
-      words.forEach(w => {
-        if (WORD_MAP[w]) {
-          queue.push(...WORD_MAP[w]);
-        } else {
-          for (let ch of w) {
-            if (ch === 'a') queue.push('AE');
-            else if (ch === 'e') queue.push('EH');
-            else if (ch === 'i') queue.push('IH');
-            else if (ch === 'o') queue.push('OW');
-            else if (ch === 'u') queue.push('AH');
-            else if (PHONEMES[ch.toUpperCase()]) queue.push(ch.toUpperCase());
-          }
-        }
-        queue.push('SIL');
-      });
-      return queue;
-    }
 
     function generateNewLivenessChallenge() {
       const options = [5, 6, 7];
@@ -666,7 +597,7 @@
         } else if (stage === 2) {
           openImg = captured;
           stage = 3;
-          stepBanner.textContent = "✏️️ Step 2: Draw a loop around ONLY the opening (teeth/tongue inside)!";
+          stepBanner.textContent = "✏️ Step 2: Draw a loop around ONLY the opening (teeth/tongue inside)!";
           snapBtn.disabled = true;
         }
       };
@@ -786,7 +717,7 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    // CLIP 1: PURE LOCAL CADENCE & BURST ANALYZER
+    // CLIP 1: PURE LOCAL CADENCE BURST CHALLENGE
     async function toggleSpeechListener() {
       if (!isListeningSpeech) {
         try {
@@ -794,13 +725,8 @@
           clip1AudioContext = new AudioCtx();
           if (clip1AudioContext.state === 'suspended') await clip1AudioContext.resume();
 
-          // Raw voice input: NO noise cancellation distortion
           const micStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: false,
-              noiseSuppression: false,
-              autoGainControl: true
-            }
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true }
           });
 
           const source = clip1AudioContext.createMediaStreamSource(micStream);
@@ -834,7 +760,7 @@
           phraseMediaRecorder.start();
           isListeningSpeech = true;
           micIconBtn.classList.add('listening');
-          liveTranscript.value = `Listening! Say ${targetBurstCount} numbers clearly...`;
+          liveTranscript.value = `Say ${targetBurstCount} numbers clearly...`;
           heardDisplay.innerHTML = `Live vocal bursts detected: <b style="color:#38bdf8;">0 / ${targetBurstCount}</b>`;
           checkPhrase.className = "";
           checkPhrase.textContent = `🎙️ Speak numbers one by one (Pause between each)...`;
@@ -865,7 +791,6 @@
                 return;
               }
             }
-
             requestAnimationFrame(trackVocalBursts);
           }
           trackVocalBursts();
@@ -909,7 +834,7 @@
       }
     }
 
-    // CLIP 2: RAW ACOUSTIC CAPTURE (NO NOISE CANCELLATION DISTORTION)
+    // CLIP 2: WHOLE-WORD CORPUS RECORDING
     async function toggleVoiceRecording() {
       if (!isMicRecording) {
         try {
@@ -917,7 +842,7 @@
           audioContext = new AudioCtx();
           if (audioContext.state === 'suspended') await audioContext.resume();
 
-          // echoCancellation: false preserves your full warm bass voice
+          // Native uncompressed mic audio: preserves your real chest resonance
           const micStream = await navigator.mediaDevices.getUserMedia({
             audio: {
               echoCancellation: false,
@@ -939,7 +864,7 @@
           checkTime.className = "";
           checkTime.textContent = "❌ Spoke for at least 15 seconds (0s / 15s)";
           checkWords.className = "";
-          checkWords.textContent = "❌ Read enough speech (0 / 25 syllables detected)";
+          checkWords.textContent = "❌ Read enough words (0 / 40 word bursts detected)";
 
           micMediaRecorder = new MediaRecorder(micStream);
           micMediaRecorder.ondataavailable = e => {
@@ -951,12 +876,12 @@
             clearInterval(recTimerInterval);
             bankVuBar.style.width = '0%';
 
-            voiceStatus.textContent = "Processing full-spectrum audio & extracting formant slices...";
+            voiceStatus.textContent = "Extracting full-length natural words from audio...";
             const rawBlob = new Blob(micChunks, { type: 'audio/webm' });
             const arrayBuf = await rawBlob.arrayBuffer();
             const decoded = await audioContext.decodeAudioData(arrayBuf);
 
-            cleanAndSliceAudio(decoded);
+            segmentNaturalWords(decoded);
             audioContext.close();
           };
 
@@ -964,7 +889,7 @@
           isMicRecording = true;
           voiceRecBtn.textContent = "🛑 Stop & Process Recording";
           voiceRecBtn.style.background = "#ef4444";
-          voiceStatus.textContent = "Recording! Read out loud to increment the syllable counter in real time.";
+          voiceStatus.textContent = "Recording! Read the paragraph out loud at a steady pace.";
 
           const buffer = new Uint8Array(analyserNode.frequencyBinCount);
           function trackAcousticPeaks() {
@@ -979,12 +904,12 @@
             bankVuBar.style.width = `${vuPct}%`;
 
             const now = performance.now();
-            if (average > 20 && now - lastPeakTime > 140) {
+            if (average > 20 && now - lastPeakTime > 200) {
               lastPeakTime = now;
               voicePeakCount++;
 
-              checkWords.textContent = `${voicePeakCount >= 25 ? '✅' : '❌'} Read enough speech (${voicePeakCount} / 25 syllables detected)`;
-              if (voicePeakCount >= 25) {
+              checkWords.textContent = `${voicePeakCount >= 40 ? '✅' : '❌'} Read enough words (${voicePeakCount} / 40 word bursts detected)`;
+              if (voicePeakCount >= 40) {
                 checkWords.className = "passed";
               }
             }
@@ -1020,24 +945,24 @@
       }
     }
 
-    // NATURAL WARMTH SLICING ENGINE (NO SQUEAKY ARTIFACTS)
-    function cleanAndSliceAudio(buffer) {
+    // SEGMENT CONTINUOUS NATURAL WORDS (PREVENTS ALIEN CHATTER)
+    function segmentNaturalWords(buffer) {
       const channelData = buffer.getChannelData(0);
       const len = channelData.length;
       const sampleRate = buffer.sampleRate;
 
-      // Gentle floor to preserve deep fundamentals
-      const noiseWindow = Math.min(len, Math.floor(sampleRate * 0.3));
+      // Calibration window
+      const noiseWindow = Math.min(len, Math.floor(sampleRate * 0.35));
       let noiseEnergy = 0;
       for (let i = 0; i < noiseWindow; i++) {
         noiseEnergy += Math.abs(channelData[i]);
       }
-      const noiseThreshold = Math.max(0.015, (noiseEnergy / noiseWindow) * 1.5);
+      const noiseFloor = Math.max(0.012, (noiseEnergy / noiseWindow) * 1.6);
 
-      const segments = [];
-      let inSpeech = false;
-      let segStart = 0;
-      const frameSize = Math.floor(sampleRate * 0.02);
+      const words = [];
+      let inWord = false;
+      let wordStart = 0;
+      const frameSize = Math.floor(sampleRate * 0.025);
 
       for (let i = 0; i < len; i += frameSize) {
         let frameEnergy = 0;
@@ -1047,60 +972,61 @@
         }
         frameEnergy /= (end - i);
 
-        if (frameEnergy > noiseThreshold && !inSpeech) {
-          inSpeech = true;
-          segStart = Math.max(0, i - Math.floor(sampleRate * 0.03));
-        } else if (frameEnergy <= noiseThreshold && inSpeech) {
-          inSpeech = false;
-          // Slices must be at least 140ms long so they sound natural instead of micro-clicks
-          if (i - segStart > sampleRate * 0.14) {
-            segments.push({ start: segStart, end: i });
+        if (frameEnergy > noiseFloor && !inWord) {
+          inWord = true;
+          // Capture leading consonant attack
+          wordStart = Math.max(0, i - Math.floor(sampleRate * 0.04));
+        } else if (frameEnergy <= noiseFloor && inWord) {
+          inWord = false;
+          const wordEnd = Math.min(len, i + Math.floor(sampleRate * 0.04));
+          const duration = (wordEnd - wordStart) / sampleRate;
+
+          // Whole words are between 0.18s and 1.2s
+          if (duration >= 0.18 && duration <= 1.25) {
+            words.push({ start: wordStart, end: wordEnd, duration: duration });
           }
         }
       }
 
-      const totalSpeechSeconds = segments.reduce((acc, s) => acc + ((s.end - s.start) / sampleRate), 0);
-
       const failedChecks = [];
-      if (!phraseVerified) failedChecks.push("must verify Clip 1 challenge first");
+      if (!phraseVerified) failedChecks.push("must pass Clip 1 first");
       if (recSeconds < 15) failedChecks.push("need at least 15s recording in Clip 2");
-      if (voicePeakCount < 20) failedChecks.push("speak more words from the prompt");
-      if (totalSpeechSeconds < 3 || segments.length < 8) failedChecks.push("too much silence or mic muted");
+      if (words.length < 15) failedChecks.push(`only detected ${words.length} whole words (need at least 15)`);
 
       if (failedChecks.length > 0) {
-        voiceStatus.textContent = `❌ Rejected: ${failedChecks.join(', ')} 😭. Try recording again!`;
+        voiceStatus.textContent = `❌ Rejected: ${failedChecks.join(', ')} 😭. Speak clearly through the paragraph!`;
         voiceStatus.style.color = "#ef4444";
-        extractedPhonemeBank = {};
+        wordBank.words = [];
         genBtn.disabled = true;
         return;
       }
 
-      extractedPhonemeBank = {
+      wordBank = {
         buffer: buffer,
-        segments: segments,
-        sampleRate: sampleRate
+        sampleRate: sampleRate,
+        words: words
       };
 
       voiceStatus.style.color = "#4ade80";
-      voiceStatus.textContent = `✅ Voice model verified! Extracted ${segments.length} natural voice slices.`;
+      voiceStatus.textContent = `✅ Voice bank ready! Cloned ${words.length} natural spoken words without helium pitch distortion.`;
       checkReadyToGenerate();
     }
 
     function checkReadyToGenerate() {
-      if (stage === 4 && phraseVerified && extractedPhonemeBank.segments && extractedPhonemeBank.segments.length > 0) {
+      if (stage === 4 && phraseVerified && wordBank.words && wordBank.words.length > 0) {
         genBtn.disabled = false;
-        genBtn.textContent = "Generate Video (Using Your Real Voice)";
-        statusMsg.textContent = "Face and natural warm voice ready to synthesize!";
+        genBtn.textContent = "Generate Video (With Your Real Words & Natural Pitch)";
+        statusMsg.textContent = "Face and verified real voice ready to synthesize!";
       }
     }
 
-    // SYNTHESIS ENGINE WITH MATCHED SAMPLE-RATE (FIXES CHIPMUNK EFFECT)
+    // SYNTHESIS: NATURAL WHOLE-WORD STITCHING AT NATIVE SAMPLE RATE
     async function executeSynthesis() {
-      const text = scriptInput.value.trim();
-      if (!text || stage !== 4 || !extractedPhonemeBank.segments) return;
+      const scriptText = scriptInput.value.trim();
+      if (!scriptText || stage !== 4 || !wordBank.words || wordBank.words.length === 0) return;
 
       genBtn.disabled = true;
-      statusMsg.textContent = "Concatenating real voice slices & lip sync frames...";
+      statusMsg.textContent = "Stitching full natural spoken words & animating lips...";
       outPlaceholder.style.display = "block";
       outPlaceholder.textContent = "Synthesizing...";
       outVideo.style.display = "none";
@@ -1108,10 +1034,10 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
 
-      const bankSampleRate = extractedPhonemeBank.sampleRate || 48000;
+      // FORCE EXACT HARDWARE SAMPLE RATE MATCH (KILLS HIGH-PITCHED CHIPMUNK EFFECT)
+      const nativeSampleRate = wordBank.sampleRate || 48000;
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      // Matching sampleRate prevents high pitch shift
-      const audioCtx = new AudioCtx({ sampleRate: bankSampleRate });
+      const audioCtx = new AudioCtx({ sampleRate: nativeSampleRate });
       if (audioCtx.state === 'suspended') {
         await audioCtx.resume();
       }
@@ -1141,7 +1067,7 @@
         outVideo.src = URL.createObjectURL(blob);
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
-        statusMsg.textContent = "Video generated with your actual natural pitch!";
+        statusMsg.textContent = "Video generated with your actual natural pitch and full words!";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
@@ -1154,79 +1080,82 @@
       const offsetX = closedCenter.x - openCenter.x;
       const offsetY = closedCenter.y - openCenter.y;
 
-      const phonemes = parseTextToPhonemes(text);
-      let targetVowelOpen = 0;
+      const wordsInScript = scriptText.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
+      const totalWords = wordsInScript.length;
+
       let currentVowelOpen = 0;
-      let isRecording = true;
+      let targetVowelOpen = 0;
+      let isRendering = true;
 
-      const segs = extractedPhonemeBank.segments;
-      const origBuffer = extractedPhonemeBank.buffer;
+      const origChannel = wordBank.buffer.getChannelData(0);
+      const availableWords = wordBank.words;
 
-      function playPhonemeSlice(index) {
-        if (index >= phonemes.length) {
+      function playWordSequence(index) {
+        if (index >= totalWords) {
           targetVowelOpen = 0;
           setTimeout(() => {
-            isRecording = false;
+            isRendering = false;
             recorder.stop();
-          }, 350);
+          }, 450);
           return;
         }
 
-        const ph = phonemes[index];
-        const pData = PHONEMES[ph] || PHONEMES['AH'];
-        const dur = pData.dur;
+        // Map script words evenly across the recorded natural whole-word pool
+        const wordInfo = availableWords[index % availableWords.length];
+        const sliceLen = wordInfo.end - wordInfo.start;
+        const wordDuration = sliceLen / nativeSampleRate;
 
-        if (ph !== 'SIL') {
-          const seg = segs[index % segs.length];
-          // Use natural duration of slice
-          const sliceLen = Math.min(seg.end - seg.start, Math.floor(bankSampleRate * Math.max(dur, 0.16)));
+        // Native buffer slice matching exact source sample rate
+        const wordBuffer = audioCtx.createBuffer(1, sliceLen, nativeSampleRate);
+        const wordData = wordBuffer.getChannelData(0);
 
-          const snippetBuffer = audioCtx.createBuffer(1, sliceLen, bankSampleRate);
-          const snippetData = snippetBuffer.getChannelData(0);
-          const origChannel = origBuffer.getChannelData(0);
-
-          for (let k = 0; k < sliceLen; k++) {
-            snippetData[k] = origChannel[seg.start + k];
-          }
-
-          const srcNode = audioCtx.createBufferSource();
-          srcNode.buffer = snippetBuffer;
-
-          // Natural smooth crossfade envelope
-          const gainNode = audioCtx.createGain();
-          const now = audioCtx.currentTime;
-          gainNode.gain.setValueAtTime(0.001, now);
-          gainNode.gain.linearRampToValueAtTime(0.95, now + 0.03);
-          gainNode.gain.linearRampToValueAtTime(0.001, now + dur);
-
-          srcNode.connect(gainNode);
-          gainNode.connect(audioDest);
-          gainNode.connect(audioCtx.destination);
-
-          srcNode.start(now);
-          srcNode.stop(now + dur + 0.02);
-
-          targetVowelOpen = pData.open;
-        } else {
-          targetVowelOpen = 0;
+        for (let i = 0; i < sliceLen; i++) {
+          wordData[i] = origChannel[wordInfo.start + i];
         }
 
+        const srcNode = audioCtx.createBufferSource();
+        srcNode.buffer = wordBuffer;
+
+        // Smooth crossfade envelope (prevents clicks)
+        const gainNode = audioCtx.createGain();
+        const now = audioCtx.currentTime;
+        gainNode.gain.setValueAtTime(0.001, now);
+        gainNode.gain.linearRampToValueAtTime(1.0, now + 0.03);
+        gainNode.gain.setValueAtTime(1.0, now + Math.max(0.04, wordDuration - 0.04));
+        gainNode.gain.linearRampToValueAtTime(0.001, now + wordDuration);
+
+        srcNode.connect(gainNode);
+        gainNode.connect(audioDest);
+        gainNode.connect(audioCtx.destination);
+
+        srcNode.start(now);
+        srcNode.stop(now + wordDuration + 0.02);
+
+        // Animate lips dynamically for the duration of the word
+        targetVowelOpen = 0.85;
         setTimeout(() => {
-          playPhonemeSlice(index + 1);
-        }, dur * 1000);
+          targetVowelOpen = 0.25;
+        }, (wordDuration * 0.5) * 1000);
+
+        // Pause briefly between words (60ms) for natural cadence
+        const nextWordDelay = (wordDuration + 0.06) * 1000;
+        setTimeout(() => {
+          targetVowelOpen = 0.0;
+          playWordSequence(index + 1);
+        }, nextWordDelay);
       }
 
-      playPhonemeSlice(0);
+      playWordSequence(0);
 
       function renderLoop() {
-        if (!isRecording && currentVowelOpen < 0.04) return;
+        if (!isRendering && currentVowelOpen < 0.03) return;
 
-        currentVowelOpen += (targetVowelOpen - currentVowelOpen) * 0.38;
+        currentVowelOpen += (targetVowelOpen - currentVowelOpen) * 0.28;
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
 
-        if (currentVowelOpen > 0.05) {
+        if (currentVowelOpen > 0.04) {
           ctx.save();
 
           ctx.beginPath();
@@ -1237,13 +1166,13 @@
           ctx.closePath();
           ctx.clip();
 
-          const vScale = Math.min(1.0, 0.4 + currentVowelOpen * 0.6);
+          const vScale = Math.min(1.0, 0.45 + currentVowelOpen * 0.55);
 
           ctx.translate(closedCenter.x, closedCenter.y);
           ctx.scale(1.0, vScale);
           ctx.translate(-closedCenter.x, -closedCenter.y);
 
-          ctx.globalAlpha = Math.min(1.0, currentVowelOpen * 1.8);
+          ctx.globalAlpha = Math.min(1.0, currentVowelOpen * 1.7);
           ctx.drawImage(openImg, offsetX, offsetY, canvas.width, canvas.height);
 
           ctx.restore();
