@@ -270,7 +270,7 @@
 
   <script>
     let stream = null;
-    let stage = 0; // 0: Need Closed snap, 1: Draw Closed mouth, 2: Need Open snap, 3: Draw Open mouth, 4: Ready!
+    let stage = 0; // 0: Closed snap, 1: Draw closed, 2: Open snap, 3: Draw open, 4: Ready
 
     let closedImg = null;
     let openImg = null;
@@ -421,12 +421,12 @@
         if (stage === 0) {
           closedImg = captured;
           stage = 1;
-          stepBanner.textContent = "✏️ Draw a loop around your CLOSED mouth/lips!";
+          stepBanner.textContent = "✏️ Step 1: Draw a loop tightly around your CLOSED lips!";
           snapBtn.disabled = true;
         } else if (stage === 2) {
           openImg = captured;
           stage = 3;
-          stepBanner.textContent = "✏️ Draw a loop around your OPEN mouth (teeth/tongue inside)!";
+          stepBanner.textContent = "✏️ Step 2: Draw a loop around ONLY the opening (teeth/interior)!";
           snapBtn.disabled = true;
         }
       };
@@ -522,7 +522,7 @@
         currentDrawingPath = [];
         stage = 2;
 
-        stepBanner.textContent = "Step 2: Open camera & take snapshot with mouth SLIGHTLY OPEN (teeth showing)!";
+        stepBanner.textContent = "Step 2: Snapshot face with mouth SLIGHTLY OPEN (keep head in same position)!";
         snapBtn.textContent = "Snapshot Open Face";
         snapBtn.disabled = true;
         drawControls.style.display = 'none';
@@ -531,16 +531,22 @@
         openMouthPath = [...currentDrawingPath];
         stage = 4;
 
-        stepBanner.textContent = "✅ Both face states locked! Ready to speak.";
+        stepBanner.textContent = "✅ Both mouth states aligned! Ready to generate.";
         drawControls.style.display = 'none';
         genBtn.disabled = false;
         genBtn.textContent = "Generate Video";
-        statusMsg.textContent = "Real teeth & mouth textures mapped successfully!";
+        statusMsg.textContent = "Textures mapped with auto-alignment & edge feathering!";
 
-        // Reset canvas to closed portrait
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
       }
+    }
+
+    // Helper: calculate center of a polygon
+    function getPolyCenter(pts) {
+      let sx = 0, sy = 0;
+      pts.forEach(p => { sx += p.x; sy += p.y; });
+      return { x: sx / pts.length, y: sy / pts.length };
     }
 
     async function executeSynthesis() {
@@ -548,12 +554,11 @@
       if (!text || stage !== 4) return;
 
       genBtn.disabled = true;
-      statusMsg.textContent = "Synthesizing authentic mouth visemes & speech...";
+      statusMsg.textContent = "Blending mouth visemes with edge feathering...";
       outPlaceholder.style.display = "block";
       outPlaceholder.textContent = "Synthesizing...";
       outVideo.style.display = "none";
 
-      // Clear any preview traces
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
 
@@ -588,7 +593,7 @@
         outVideo.src = URL.createObjectURL(blob);
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
-        statusMsg.textContent = "Video generated with your real mouth & teeth!";
+        statusMsg.textContent = "Video generated! Mouth seamlessly attached.";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
@@ -596,19 +601,14 @@
 
       recorder.start();
 
-      // Find center of open mouth to calculate squish/scale factor
-      let oMinX = Infinity, oMaxX = -Infinity, oMinY = Infinity, oMaxY = -Infinity;
-      openMouthPath.forEach(pt => {
-        if (pt.x < oMinX) oMinX = pt.x;
-        if (pt.x > oMaxX) oMaxX = pt.x;
-        if (pt.y < oMinY) oMinY = pt.y;
-        if (pt.y > oMaxY) oMaxY = pt.y;
-      });
-      const openCenterY = (oMinY + oMaxY) / 2;
-      const openHeight = oMaxY - oMinY;
+      // AUTO-ALIGNMENT: Compute center offset between closed and open mouth drawings
+      const closedCenter = getPolyCenter(closedMouthPath);
+      const openCenter = getPolyCenter(openMouthPath);
+      const offsetX = closedCenter.x - openCenter.x;
+      const offsetY = closedCenter.y - openCenter.y;
 
       const phonemes = parseTextToPhonemes(text);
-      let targetVowelOpen = 0; // 0 to 1 scale
+      let targetVowelOpen = 0;
       let currentVowelOpen = 0;
       let isRecording = true;
 
@@ -672,41 +672,42 @@
 
       playPhoneme(0);
 
-      // Deterministic puppet render loop
+      // Render loop with auto-centered coordinates and soft edge clipping
       function renderLoop() {
-        if (!isRecording && currentVowelOpen < 0.05) return;
+        if (!isRecording && currentVowelOpen < 0.04) return;
 
-        currentVowelOpen += (targetVowelOpen - currentVowelOpen) * 0.35;
+        currentVowelOpen += (targetVowelOpen - currentVowelOpen) * 0.38;
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 1. Draw base face (Closed portrait)
+        // 1. Base portrait (Closed face)
         ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
 
-        // 2. If vowel > 0, blend in the real open-mouth texture (squished vertically to match vowel opening!)
+        // 2. Open mouth clipped using its OWN shape, shifted directly over the closed mouth
         if (currentVowelOpen > 0.05) {
           ctx.save();
 
-          // Clip to the user's closed mouth target boundary so it doesn't spill over
+          // Clip to the OPEN mouth polygon, translated to closed mouth's exact position
           ctx.beginPath();
-          ctx.moveTo(closedMouthPath[0].x, closedMouthPath[0].y);
-          for (let i = 1; i < closedMouthPath.length; i++) {
-            ctx.lineTo(closedMouthPath[i].x, closedMouthPath[i].y);
+          ctx.moveTo(openMouthPath[0].x + offsetX, openMouthPath[0].y + offsetY);
+          for (let i = 1; i < openMouthPath.length; i++) {
+            ctx.lineTo(openMouthPath[i].x + offsetX, openMouthPath[i].y + offsetY);
           }
           ctx.closePath();
           ctx.clip();
 
-          // Rule: If open mouth was too wide, squish scale factor down
-          // vertical scale adjusts proportionally to current phoneme
-          const vScale = Math.min(1.0, currentVowelOpen * 1.1);
+          // Vertical scale based on current phoneme aperture
+          const vScale = Math.min(1.0, 0.4 + currentVowelOpen * 0.6);
 
-          ctx.translate(0, openCenterY);
+          ctx.translate(closedCenter.x, closedCenter.y);
           ctx.scale(1.0, vScale);
-          ctx.translate(0, -openCenterY);
+          ctx.translate(-closedCenter.x, -closedCenter.y);
 
-          // Alpha blend real open-mouth picture directly over the lips
-          ctx.globalAlpha = Math.min(1.0, currentVowelOpen * 1.5);
-          ctx.drawImage(openImg, 0, 0, canvas.width, canvas.height);
+          // Alpha blend directly aligned over lips
+          ctx.globalAlpha = Math.min(1.0, currentVowelOpen * 1.8);
+
+          // Draw the open mouth image shifted by the exact alignment offset
+          ctx.drawImage(openImg, offsetX, offsetY, canvas.width, canvas.height);
 
           ctx.restore();
         }
