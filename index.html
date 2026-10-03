@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Vofa AI | Multi-Angle 3D Puppet Engine</title>
+  <title>Vofa AI | Real Voice & Dual-State Puppet Engine</title>
   <style>
     :root {
       --bg: #0b0d14;
@@ -150,6 +150,10 @@
       cursor: crosshair;
     }
 
+    #recordedHeadVideo {
+      display: none;
+    }
+
     .placeholder-msg {
       position: absolute;
       color: var(--muted);
@@ -172,6 +176,19 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
+    }
+
+    .prompt-box {
+      background: #131722;
+      border: 1px dashed #38bdf8;
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 0.85rem;
+      color: #e2e8f0;
+      line-height: 1.5;
+      text-align: left;
+      max-height: 180px;
+      overflow-y: auto;
     }
 
     /* Word Cutter Section */
@@ -237,6 +254,16 @@
       font-size: 0.75rem;
     }
 
+    .mode-badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: #334155;
+      color: #fff;
+      font-weight: 700;
+    }
+
     button {
       flex: 1;
       padding: 10px 12px;
@@ -284,55 +311,38 @@
     textarea:focus {
       border-color: #a855f7;
     }
-
-    .mode-badge {
-      display: inline-block;
-      font-size: 0.75rem;
-      padding: 3px 8px;
-      border-radius: 4px;
-      background: #0284c7;
-      color: #fff;
-      font-weight: 700;
-    }
-
-    .head-sway-controls {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 0.85rem;
-      color: #94a3b8;
-    }
   </style>
 </head>
 <body>
 
   <header>
     <div class="brand">VOFA <span>AI</span></div>
-    <div class="badge">Multi-Angle Puppet Engine</div>
+    <div class="badge">Head Video Rig & Word Cutter</div>
   </header>
 
   <div class="hero">
     <h1>You don't need AI for AI-generated videos!</h1>
-    <p>Capture face angles & animate realistic head rotation with pure code.</p>
+    <p>Turn your real face into high-performance visual video puppets.</p>
   </div>
 
   <main>
-    <!-- Visual Face Configuration: Center, Left & Right Angles -->
+    <!-- Step 1: Face Capture & Head Turn Video Rig -->
     <div class="panel">
-      <h2>Step 1: Multi-Angle Face Setup (Required)</h2>
+      <h2>Step 1: Face & Head-Turn Rig Setup (Required)</h2>
       <div class="step-banner" id="stepBanner">
-        1. Open camera & take snapshot facing CENTER with mouth CLOSED.
+        1. Open camera & take snapshot with mouth CLOSED.
       </div>
 
       <div class="view-box" id="viewBox">
         <video id="webcam" autoplay playsinline muted></video>
         <canvas id="renderCanvas"></canvas>
+        <video id="recordedHeadVideo" loop playsinline muted></video>
         <div class="placeholder-msg" id="camPlaceholder">Webcam feed offline</div>
       </div>
 
       <div class="row">
         <button id="camBtn" onclick="toggleCamera()">Open Camera</button>
-        <button id="snapBtn" onclick="handleSnapshot()" disabled>Snapshot Center Face (Closed)</button>
+        <button id="snapBtn" onclick="handleSnapshot()" disabled>Snapshot Closed Face</button>
       </div>
 
       <div class="row" id="drawControls" style="display: none;">
@@ -341,27 +351,27 @@
       </div>
     </div>
 
-    <!-- Optional Voice Soundboard -->
+    <!-- Step 2: Optional Voice Track & Word Cutter -->
     <div class="panel">
       <div style="display: flex; justify-content: space-between; align-items: center;">
         <h2>Step 2: Voice Track (Optional)</h2>
-        <span class="mode-badge" id="audioModeBadge" style="background: #334155;">Silent Video Mode</span>
+        <span class="mode-badge" id="audioModeBadge">Silent Video Mode</span>
       </div>
 
       <p style="font-size: 0.8rem; color: var(--muted); line-height: 1.4;">
-        Audio is 100% optional! You can skip this step to export a silent head-rotating video for CapCut/Premiere, or record words below.
+        Audio is 100% optional! You can skip this step entirely to render a clean silent video for an external editor, or record words below.
       </p>
 
       <div class="audio-card">
         <div class="row">
-          <button id="voiceRecBtn" onclick="toggleVoiceRecording()">🎙️ Record Words (Optional)</button>
+          <button id="voiceRecBtn" onclick="toggleVoiceRecording()">🎙️ Record Master Voice (Optional)</button>
           <button onclick="clearAudioData()" style="color: #f87171; flex: 0 0 110px;">Clear Audio</button>
         </div>
 
         <!-- Cutter Tool Player (appears after recording) -->
         <div class="cutter-container" id="cutterContainer" style="display: none;">
           <div style="font-size: 0.85rem; font-weight: 700; color: #38bdf8;">
-            ✂️ Word Slicer: Listen & Tap "Cut Word" at the end of each word!
+            ✂️️ Word Slicer: Listen & Tap "Cut Word" at the end of each word!
           </div>
 
           <audio id="masterAudio" style="width: 100%; height: 32px; margin: 4px 0;"></audio>
@@ -384,6 +394,7 @@
             ✅ Done Cutting: Label My Words
           </button>
 
+          <!-- List of clips to label with text boxes -->
           <div class="word-list-box" id="wordListBox" style="display: none;"></div>
         </div>
 
@@ -391,21 +402,16 @@
       </div>
     </div>
 
-    <!-- Synthesis Panel -->
+    <!-- Step 3: Synthesis Panel -->
     <div class="panel">
-      <h2>Step 3: Script & 3D Rotation Render</h2>
+      <h2>Step 3: Script & Render</h2>
       <p style="font-size: 0.8rem; color: var(--muted);">
-        Type your script below. The engine animates mouth lipsync and automatically rotates your head left and right!
+        Type your script below. The engine animates mouth lipsync and loops your natural head-turn video!
       </p>
-      <textarea id="scriptInput">hello welcome to vofa ai this video automatically turns my head left and right using pure code</textarea>
-
-      <div class="head-sway-controls">
-        <label>Rotation Sway Intensity:</label>
-        <input type="range" id="swayIntensity" min="0.2" max="1.0" step="0.1" value="0.7" style="flex: 1;" />
-      </div>
+      <textarea id="scriptInput">hello welcome to vofa ai this video uses my real head turn recording with natural mouth flaps</textarea>
 
       <button class="primary" id="genBtn" onclick="executeSynthesis()" disabled>
-        Generate Video (Complete Step 1 Angles First)
+        Generate Video (Complete Step 1 Rig First)
       </button>
 
       <div class="view-box" style="margin-top: 10px;">
@@ -422,18 +428,21 @@
     let stream = null;
     let stage = 0;
 
-    // Multi-Angle Rig State
-    let closedCenterImg = null;
-    let openCenterImg = null;
-    let closedLeftImg = null;
-    let closedRightImg = null;
-
+    // Mouth Stills & Polygons
+    let closedImg = null;
+    let openImg = null;
     let closedMouthPath = [];
     let openMouthPath = [];
     let currentDrawingPath = [];
     let isDrawing = false;
 
-    // Optional Audio State
+    // Head-Turn Video State
+    let headMediaRecorder = null;
+    let headVideoChunks = [];
+    let isRecordingHeadVid = false;
+    let headVideoBlob = null;
+
+    // Optional Audio & Slicer State
     let micMediaRecorder = null;
     let micChunks = [];
     let isMicRecording = false;
@@ -446,6 +455,7 @@
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
     const ctx = canvas.getContext('2d');
+    const recordedHeadVideo = document.getElementById('recordedHeadVideo');
     const camPlaceholder = document.getElementById('camPlaceholder');
     const camBtn = document.getElementById('camBtn');
     const snapBtn = document.getElementById('snapBtn');
@@ -461,7 +471,6 @@
     const voiceRecBtn = document.getElementById('voiceRecBtn');
     const voiceStatus = document.getElementById('voiceStatus');
     const audioModeBadge = document.getElementById('audioModeBadge');
-    const swayIntensity = document.getElementById('swayIntensity');
 
     const cutterContainer = document.getElementById('cutterContainer');
     const masterAudio = document.getElementById('masterAudio');
@@ -481,6 +490,7 @@
           camPlaceholder.style.display = 'none';
           webcam.style.display = 'block';
           canvas.style.display = 'none';
+          recordedHeadVideo.style.display = 'none';
           camBtn.textContent = 'Close Camera';
           snapBtn.disabled = false;
         } catch (e) {
@@ -503,6 +513,11 @@
     }
 
     function handleSnapshot() {
+      if (stage === 4) {
+        toggleHeadVideoRecording();
+        return;
+      }
+
       if (!webcam.videoWidth) return;
 
       const w = webcam.videoWidth;
@@ -515,44 +530,21 @@
       captured.onload = () => {
         webcam.style.display = 'none';
         canvas.style.display = 'block';
+        drawControls.style.display = 'flex';
+        confirmStepBtn.disabled = true;
 
         if (stage === 0) {
-          // Center closed
-          closedCenterImg = captured;
+          closedImg = captured;
           stage = 1;
-          stepBanner.textContent = "✏️ 1b. Draw a tight loop around your CLOSED lips!";
-          drawControls.style.display = 'flex';
-          confirmStepBtn.disabled = true;
+          stepBanner.textContent = "✏️ Step 1: Draw a loop tightly around your CLOSED lips!";
           snapBtn.disabled = true;
           stopCamera();
         } else if (stage === 2) {
-          // Center open
-          openCenterImg = captured;
+          openImg = captured;
           stage = 3;
-          stepBanner.textContent = "✏️ 2b. Draw a loop around ONLY the mouth opening (teeth/tongue inside)!";
-          drawControls.style.display = 'flex';
-          confirmStepBtn.disabled = true;
+          stepBanner.textContent = "✏️ Step 2: Draw a loop around ONLY the opening (teeth/tongue inside)!";
           snapBtn.disabled = true;
           stopCamera();
-        } else if (stage === 4) {
-          // Left Turn closed
-          closedLeftImg = captured;
-          stage = 5;
-          stepBanner.textContent = "3. Now turn your head slightly RIGHT (~15°) with mouth closed & snap!";
-          snapBtn.textContent = "Snapshot Right-Turn Face";
-          snapBtn.disabled = false;
-          // Keep camera open for next turn
-          webcam.style.display = 'block';
-          canvas.style.display = 'none';
-        } else if (stage === 5) {
-          // Right Turn closed
-          closedRightImg = captured;
-          stage = 6;
-          stepBanner.textContent = "✅ All 3 Angles Captured! Face puppet is ready for 3D rotation.";
-          snapBtn.disabled = true;
-          snapBtn.textContent = "Angles Completed";
-          stopCamera();
-          checkReadyToGenerate();
         }
       };
       captured.src = canvas.toDataURL('image/jpeg', 0.95);
@@ -609,7 +601,7 @@
     window.addEventListener('mouseup', onEnd);
 
     function drawActivePath(isDone = false) {
-      const currentBg = stage === 1 ? closedCenterImg : openCenterImg;
+      const currentBg = stage === 1 ? closedImg : openImg;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(currentBg, 0, 0, canvas.width, canvas.height);
 
@@ -635,7 +627,7 @@
     function clearCurrentDrawing() {
       currentDrawingPath = [];
       confirmStepBtn.disabled = true;
-      const currentBg = stage === 1 ? closedCenterImg : openCenterImg;
+      const currentBg = stage === 1 ? closedImg : openImg;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(currentBg, 0, 0, canvas.width, canvas.height);
     }
@@ -646,9 +638,9 @@
         currentDrawingPath = [];
         stage = 2;
 
-        stepBanner.textContent = "2. Center face with mouth SLIGHTLY OPEN (keep head still) & snap!";
+        stepBanner.textContent = "Step 2: Snapshot face with mouth SLIGHTLY OPEN (keep head in same position)!";
         snapBtn.textContent = "Snapshot Open Face";
-        snapBtn.disabled = false;
+        snapBtn.disabled = true;
         drawControls.style.display = 'none';
         toggleCamera();
       } else if (stage === 3) {
@@ -656,11 +648,57 @@
         currentDrawingPath = [];
         stage = 4;
 
-        stepBanner.textContent = "3. Now turn your head slightly LEFT (~15°) with mouth closed & snap!";
-        snapBtn.textContent = "Snapshot Left-Turn Face";
+        stepBanner.textContent = "Step 3: Tap 'Record Head Video' & gently look Left, Center, then Right with mouth closed!";
+        snapBtn.textContent = "⏺ Record 4s Head Video";
         snapBtn.disabled = false;
         drawControls.style.display = 'none';
         toggleCamera();
+      }
+    }
+
+    // HEAD-TURN VIDEO RECORDING LOGIC
+    function toggleHeadVideoRecording() {
+      if (!isRecordingHeadVid) {
+        if (!stream) {
+          alert("Open camera first!");
+          return;
+        }
+
+        headVideoChunks = [];
+        headMediaRecorder = new MediaRecorder(stream);
+        headMediaRecorder.ondataavailable = e => {
+          if (e.data.size > 0) headVideoChunks.push(e.data);
+        };
+
+        headMediaRecorder.onstop = () => {
+          headVideoBlob = new Blob(headVideoChunks, { type: 'video/webm' });
+          recordedHeadVideo.src = URL.createObjectURL(headVideoBlob);
+          recordedHeadVideo.play();
+
+          stage = 5;
+          stepBanner.textContent = "✅ Head-Turn Rig Ready! Video background locked.";
+          snapBtn.textContent = "Rig Completed";
+          snapBtn.disabled = true;
+          stopCamera();
+
+          checkReadyToGenerate();
+        };
+
+        headMediaRecorder.start();
+        isRecordingHeadVid = true;
+        snapBtn.textContent = "🛑 Stop Video (or wait 4s)";
+        snapBtn.style.background = "#ef4444";
+        stepBanner.textContent = "🎥 Recording... Turn head slightly Left, then Center, then Right!";
+
+        setTimeout(() => {
+          if (isRecordingHeadVid) toggleHeadVideoRecording();
+        }, 4000);
+      } else {
+        isRecordingHeadVid = false;
+        snapBtn.style.background = "#1c2233";
+        if (headMediaRecorder && headMediaRecorder.state !== 'inactive') {
+          headMediaRecorder.stop();
+        }
       }
     }
 
@@ -670,7 +708,7 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    // OPTIONAL AUDIO LOGIC
+    // OPTIONAL AUDIO & WORD CUTTER LOGIC
     async function toggleVoiceRecording() {
       if (!isMicRecording) {
         try {
@@ -686,7 +724,7 @@
 
           micMediaRecorder.onstop = async () => {
             micStream.getTracks().forEach(t => t.stop());
-            voiceStatus.textContent = "Audio recorded! Cut words below or export silent video.";
+            voiceStatus.textContent = "Master audio recorded! Use the Word Slicer below to cut your words.";
 
             masterAudioBlob = new Blob(micChunks, { type: 'audio/webm' });
             masterAudio.src = URL.createObjectURL(masterAudioBlob);
@@ -706,16 +744,16 @@
 
           micMediaRecorder.start();
           isMicRecording = true;
-          voiceRecBtn.textContent = "🛑 Stop Recording";
+          voiceRecBtn.textContent = "🛑 Stop Master Recording";
           voiceRecBtn.style.background = "#ef4444";
-          voiceStatus.textContent = "Recording words with natural pauses...";
+          voiceStatus.textContent = "Recording! Speak your target words clearly with pauses.";
         } catch (e) {
           alert("Microphone access denied!");
         }
       } else {
         micMediaRecorder.stop();
         isMicRecording = false;
-        voiceRecBtn.textContent = "🎙️ Re-record Words";
+        voiceRecBtn.textContent = "🎙️ Re-record Master Voice";
         voiceRecBtn.style.background = "#1c2233";
       }
     }
@@ -766,6 +804,7 @@
       if (cutPoints.length > 1) {
         cutPoints.pop();
         cutCountLabel.textContent = cutPoints.length - 1;
+
         const replayPos = cutPoints[cutPoints.length - 1];
         masterAudio.currentTime = Math.max(0, replayPos - 0.1);
         masterAudio.play();
@@ -778,7 +817,7 @@
         if (masterAudio.duration > 0.3) {
           cutPoints.push(masterAudio.duration);
         } else {
-          alert("Play audio and tap 'Cut Word' at least once!");
+          alert("Play the audio and tap 'Cut Word' at least once!");
           return;
         }
       }
@@ -791,12 +830,14 @@
       wordListBox.style.display = "flex";
 
       const totalClips = cutPoints.length - 1;
+
       for (let i = 0; i < totalClips; i++) {
         const startSec = cutPoints[i];
         const endSec = cutPoints[i + 1];
 
         const row = document.createElement('div');
         row.className = "word-row";
+
         row.innerHTML = `
           <button onclick="previewWordSlice(${startSec}, ${endSec})">▶ Listen</button>
           <input type="text" id="label_clip_${i}" placeholder="Type word (e.g. hello)" oninput="updateSoundboard()" />
@@ -804,7 +845,7 @@
         wordListBox.appendChild(row);
       }
 
-      voiceStatus.textContent = `Generated ${totalClips} clips! Type labels to add voiceover.`;
+      voiceStatus.textContent = `Generated ${totalClips} clips! Type the word each clip speaks.`;
       voiceStatus.style.color = "#38bdf8";
     }
 
@@ -874,32 +915,32 @@
     }
 
     function checkReadyToGenerate() {
-      if (stage === 6) {
+      if (stage === 5) {
         genBtn.disabled = false;
         const hasWords = Object.keys(labeledSoundboard).length > 0;
         if (hasWords) {
-          genBtn.textContent = `Generate 3D Video (${Object.keys(labeledSoundboard).length} Words Loaded)`;
-          statusMsg.textContent = "Ready to render rotating head video with voiceover!";
+          genBtn.textContent = `Generate Video (${Object.keys(labeledSoundboard).length} Labeled Words)`;
+          statusMsg.textContent = "Ready to synthesize script with your labeled voice clips and head rotation!";
         } else {
-          genBtn.textContent = "Generate 3D Video (Silent & Ready for Editor)";
-          statusMsg.textContent = "Ready to render rotating head puppet with natural mouth flaps!";
+          genBtn.textContent = "Generate Video (Silent & Head-Turn Rig Ready)";
+          statusMsg.textContent = "Ready to render smooth head-turning visual puppet (add audio in post)!";
         }
       }
     }
 
-    // MULTI-ANGLE SYNTHESIS & 3D ROTATION RENDER LOOP
+    // SYNTHESIS & RENDERING PIPELINE
     async function executeSynthesis() {
       const scriptText = scriptInput.value.trim();
-      if (!scriptText || stage !== 6) return;
+      if (!scriptText || stage !== 5 || !headVideoBlob) return;
 
       genBtn.disabled = true;
-      statusMsg.textContent = "Rendering 3D head rotation & lipsync animation...";
+      statusMsg.textContent = "Stitching head-turn video with mouth-flaps...";
       outPlaceholder.style.display = "block";
-      outPlaceholder.textContent = "Rendering...";
+      outPlaceholder.textContent = "Synthesizing...";
       outVideo.style.display = "none";
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(closedCenterImg, 0, 0, canvas.width, canvas.height);
+      canvas.style.display = 'block';
+      webcam.style.display = 'none';
 
       const hasAudio = Object.keys(labeledSoundboard).length > 0;
 
@@ -937,8 +978,8 @@
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
         statusMsg.textContent = hasAudio 
-          ? "3D head rotating video generated with voiceover!" 
-          : "Silent 3D head rotating video generated! Drop into your editor for voiceover.";
+          ? "Video generated with synced voiceover and head rotation!" 
+          : "Silent video generated! Import into your video editor and place your voiceover on top.";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
@@ -957,7 +998,9 @@
       let currentVowelOpen = 0;
       let targetVowelOpen = 0;
       let isRendering = true;
-      let renderStartTime = performance.now();
+
+      recordedHeadVideo.currentTime = 0;
+      await recordedHeadVideo.play();
 
       function playNextWord(index) {
         if (index >= wordsInScript.length) {
@@ -965,6 +1008,7 @@
           setTimeout(() => {
             isRendering = false;
             recorder.stop();
+            recordedHeadVideo.pause();
           }, 450);
           return;
         }
@@ -993,7 +1037,9 @@
           srcNode.stop(now + wordDur + 0.02);
 
           targetVowelOpen = 0.85;
-          setTimeout(() => { targetVowelOpen = 0.2; }, (wordDur * 0.5) * 1000);
+          setTimeout(() => {
+            targetVowelOpen = 0.2;
+          }, (wordDur * 0.5) * 1000);
 
           const nextDelay = (wordDur + 0.07) * 1000;
           setTimeout(() => {
@@ -1005,7 +1051,9 @@
           const wordDur = Math.max(0.24, Math.min(0.55, wordLen * 0.075));
 
           targetVowelOpen = 0.85;
-          setTimeout(() => { targetVowelOpen = 0.25; }, (wordDur * 0.5) * 1000);
+          setTimeout(() => {
+            targetVowelOpen = 0.25;
+          }, (wordDur * 0.5) * 1000);
 
           const nextDelay = (wordDur + 0.06) * 1000;
           setTimeout(() => {
@@ -1017,60 +1065,40 @@
 
       playNextWord(0);
 
-      // MULTI-ANGLE 3D HEAD ROTATION & LIP SYNC COMPOSITING
-      function renderLoop(now) {
+      function renderLoop() {
         if (!isRendering && currentVowelOpen < 0.03) return;
 
-        currentVowelOpen += (targetVowelOpen - currentVowelOpen) * 0.32;
-
-        const elapsedSec = (now - renderStartTime) / 1000;
-        const intensity = parseFloat(swayIntensity.value) || 0.7;
-        
-        // Sine wave head angle oscillator: -1.0 (Left), 0.0 (Center), +1.0 (Right)
-        const headRotationAngle = Math.sin(elapsedSec * 1.6) * intensity;
+        currentVowelOpen += (targetVowelOpen - currentVowelOpen) * 0.35;
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 1. Draw base angle pose (Center background always)
-        ctx.globalAlpha = 1.0;
-        ctx.drawImage(closedCenterImg, 0, 0, canvas.width, canvas.height);
-
-        // 2. Blend Left or Right turn angle
-        if (headRotationAngle < -0.15 && closedLeftImg) {
-          const blendAlpha = Math.min(1.0, (Math.abs(headRotationAngle) - 0.15) * 2.2);
-          ctx.globalAlpha = blendAlpha;
-          ctx.drawImage(closedLeftImg, 0, 0, canvas.width, canvas.height);
-          ctx.globalAlpha = 1.0;
-        } else if (headRotationAngle > 0.15 && closedRightImg) {
-          const blendAlpha = Math.min(1.0, (headRotationAngle - 0.15) * 2.2);
-          ctx.globalAlpha = blendAlpha;
-          ctx.drawImage(closedRightImg, 0, 0, canvas.width, canvas.height);
-          ctx.globalAlpha = 1.0;
+        // Draw recorded continuous head-turn video as base frame
+        if (recordedHeadVideo.readyState >= 2) {
+          ctx.drawImage(recordedHeadVideo, 0, 0, canvas.width, canvas.height);
+        } else {
+          ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
         }
 
-        // 3. Composite Animated Open Mouth (moves with head rotation sway)
+        // Composite animated open mouth cutout
         if (currentVowelOpen > 0.04) {
           ctx.save();
 
-          // Subtle horizontal shift simulating 3D mouth perspective turn
-          const swayX = headRotationAngle * (canvas.width * 0.025);
-
           ctx.beginPath();
-          ctx.moveTo(openMouthPath[0].x + offsetX + swayX, openMouthPath[0].y + offsetY);
+          ctx.moveTo(openMouthPath[0].x + offsetX, openMouthPath[0].y + offsetY);
           for (let i = 1; i < openMouthPath.length; i++) {
-            ctx.lineTo(openMouthPath[i].x + offsetX + swayX, openMouthPath[i].y + offsetY);
+            ctx.lineTo(openMouthPath[i].x + offsetX, openMouthPath[i].y + offsetY);
           }
           ctx.closePath();
           ctx.clip();
 
           const vScale = Math.min(1.0, 0.45 + currentVowelOpen * 0.55);
 
-          ctx.translate(closedCenter.x + swayX, closedCenter.y);
+          ctx.translate(closedCenter.x, closedCenter.y);
           ctx.scale(1.0, vScale);
-          ctx.translate(-(closedCenter.x + swayX), -closedCenter.y);
+          ctx.translate(-closedCenter.x, -closedCenter.y);
 
           ctx.globalAlpha = Math.min(1.0, currentVowelOpen * 1.8);
-          ctx.drawImage(openCenterImg, offsetX + swayX, offsetY, canvas.width, canvas.height);
+          ctx.drawImage(openImg, offsetX, offsetY, canvas.width, canvas.height);
 
           ctx.restore();
         }
@@ -1078,13 +1106,13 @@
         requestAnimationFrame(renderLoop);
       }
 
-      requestAnimationFrame(renderLoop);
+      renderLoop();
     }
 
     function downloadVid() {
       const a = document.createElement('a');
       a.href = outVideo.src;
-      a.download = 'vofa-3d-render.webm';
+      a.download = 'vofa-render.webm';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
