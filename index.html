@@ -3,12 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Vofa AI | Full-Body 3D Tracked Rig</title>
+  <title>Vofa AI | Full Modular Anatomy & Real Voice Engine</title>
 
-  <!-- Lightweight MediaPipe FaceMesh & Pose Engines -->
+  <!-- Lightweight MediaPipe Face Mesh Engine -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 
   <style>
     :root {
@@ -129,7 +128,7 @@
 
     .view-box {
       width: 100%;
-      min-height: 320px;
+      min-height: 280px;
       background: #06070a;
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -146,7 +145,7 @@
     video, canvas {
       width: 100%;
       height: auto;
-      max-height: 75vh;
+      max-height: 70vh;
       display: block;
       touch-action: none;
       object-fit: contain;
@@ -155,10 +154,6 @@
     #renderCanvas {
       display: none;
       cursor: crosshair;
-    }
-
-    #recordedHeadVideo {
-      display: none;
     }
 
     .placeholder-msg {
@@ -173,6 +168,30 @@
       display: flex;
       gap: 8px;
       width: 100%;
+    }
+
+    .parts-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .part-badge {
+      font-size: 0.72rem;
+      text-align: center;
+      padding: 6px 2px;
+      background: #0f1422;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .part-badge.done {
+      background: #14532d;
+      border-color: #22c55e;
+      color: #fff;
     }
 
     .audio-card {
@@ -190,7 +209,7 @@
       flex-direction: column;
       gap: 10px;
       background: #0f1420;
-      border: 1px solid var(--border);
+      border: 1px solid #283046;
       border-radius: 8px;
       padding: 12px;
       margin-top: 6px;
@@ -310,32 +329,38 @@
 
   <header>
     <div class="brand">VOFA <span>AI</span></div>
-    <div class="badge">Full-Body 3D Rig</div>
+    <div class="badge">Modular Anatomy & Voice Rig</div>
   </header>
 
   <div class="hero">
     <h1>You don't need AI for AI-generated videos!</h1>
-    <p>Full-body tracking from head to shoes with procedural neck adjustment.</p>
+    <p>Capture close-up anatomy snapshots, label sliced voice clips, and render full body puppets.</p>
   </div>
 
   <main>
-    <!-- Step 1: Mouth Capture & Full-Body Video Rig -->
+    <!-- Step 1: Modular Part-by-Part Rig Setup -->
     <div class="panel">
-      <h2>Step 1: Face Poses & Full-Body Video Rig</h2>
+      <h2>Step 1: Modular Body Capture (Close-Up Snapshots)</h2>
       <div class="step-banner" id="stepBanner">
-        1. Open camera & take snapshot facing forward with mouth CLOSED.
+        1. Open camera & snap your HEAD/NECK with mouth CLOSED.
+      </div>
+
+      <div class="parts-grid">
+        <div class="part-badge" id="badgeHead">1. Head</div>
+        <div class="part-badge" id="badgeTorso">2. Torso</div>
+        <div class="part-badge" id="badgeLegs">3. Legs</div>
+        <div class="part-badge" id="badgeFeet">4. Feet</div>
       </div>
 
       <div class="view-box" id="viewBox">
         <video id="webcam" autoplay playsinline muted></video>
         <canvas id="renderCanvas"></canvas>
-        <video id="recordedHeadVideo" loop playsinline muted></video>
         <div class="placeholder-msg" id="camPlaceholder">Webcam feed offline</div>
       </div>
 
       <div class="row">
         <button id="camBtn" onclick="toggleCamera()">Open Camera</button>
-        <button id="snapBtn" onclick="handleSnapshot()" disabled>Snapshot Closed Face</button>
+        <button id="snapBtn" onclick="handleSnapshot()" disabled>Snapshot Head (Closed)</button>
       </div>
 
       <div class="row" id="drawControls" style="display: none;">
@@ -347,12 +372,12 @@
     <!-- Step 2: Optional Voice Track & Word Cutter -->
     <div class="panel">
       <div style="display: flex; justify-content: space-between; align-items: center;">
-        <h2>Step 2: Voice Track (Optional)</h2>
+        <h2>Step 2: Voice Track & Word Cutter (Optional)</h2>
         <span class="mode-badge" id="audioModeBadge">Silent Video Mode</span>
       </div>
 
       <p style="font-size: 0.8rem; color: var(--muted); line-height: 1.4;">
-        Audio is 100% optional! You can skip this step to export a silent video for your editor, or record words below.
+        Audio is 100% optional! You can skip this step to export a silent video for your editor, or record master words below.
       </p>
 
       <div class="audio-card">
@@ -389,20 +414,20 @@
           <div class="word-list-box" id="wordListBox" style="display: none;"></div>
         </div>
 
-        <p id="voiceStatus" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Audio is optional — Step 1 setup is all you need!</p>
+        <p id="voiceStatus" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Audio is optional — Step 1 body parts are all you need!</p>
       </div>
     </div>
 
     <!-- Step 3: Synthesis Panel -->
     <div class="panel">
-      <h2>Step 3: Script & Full-Body 3D Render</h2>
+      <h2>Step 3: Script & Full Puppet Render</h2>
       <p style="font-size: 0.8rem; color: var(--muted);">
-        Tracks your full posture (neck, torso, legs, feet) and adjusts neck flex when your head turns.
+        Type your script below. The engine stitches your parts together and swivels the head with natural neck elasticity!
       </p>
-      <textarea id="scriptInput">hello welcome to vofa ai this is my full body 3d avatar with dynamic neck movement</textarea>
+      <textarea id="scriptInput">hello welcome to vofa ai this is my full body avatar assembled from individual photos</textarea>
 
       <button class="primary" id="genBtn" onclick="executeSynthesis()" disabled>
-        Generate Video (Complete Step 1 Rig First)
+        Generate Video (Complete All Body Parts First)
       </button>
 
       <div class="view-box" style="margin-top: 10px;">
@@ -410,7 +435,7 @@
         <video id="outVideo" controls playsinline style="display: none; width: 100%; height: auto;"></video>
       </div>
 
-      <p id="statusMsg" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Complete Step 1 above to enable render</p>
+      <p id="statusMsg" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Snap your body parts above to build your model</p>
       <button id="downloadBtn" disabled onclick="downloadVid()">Download Output (.webm)</button>
     </div>
   </main>
@@ -419,32 +444,21 @@
     let stream = null;
     let stage = 0;
 
-    // Mouth Stills & Polygons
-    let closedImg = null;
+    // Body Segments
+    let headImg = null;
     let openImg = null;
+    let torsoImg = null;
+    let legsImg = null;
+    let feetImg = null;
+
+    // Mouth Loop Coordinates
     let closedMouthPath = [];
     let openMouthPath = [];
     let currentDrawingPath = [];
     let isDrawing = false;
-    let baseLipCenter = { x: 0, y: 0 };
-    let baseLipWidth = 100;
-
-    // Full-Body Video State
-    let headMediaRecorder = null;
-    let headVideoChunks = [];
-    let isRecordingHeadVid = false;
-    let headVideoBlob = null;
-
-    // Isolated Feathered Mouth Canvas
     let mouthPatchCanvas = null;
-    let mouthPatchCtx = null;
     let patchBoundingBox = { x: 0, y: 0, width: 0, height: 0 };
-
-    // MediaPipe Engines (FaceMesh & Pose)
-    let faceMesh = null;
-    let poseTracker = null;
-    let latestLandmarks = null;
-    let latestPoseLandmarks = null;
+    let baseLipCenter = { x: 0, y: 0 };
 
     // Optional Audio & Slicer State
     let micMediaRecorder = null;
@@ -459,7 +473,6 @@
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
     const ctx = canvas.getContext('2d');
-    const recordedHeadVideo = document.getElementById('recordedHeadVideo');
     const camPlaceholder = document.getElementById('camPlaceholder');
     const camBtn = document.getElementById('camBtn');
     const snapBtn = document.getElementById('snapBtn');
@@ -472,51 +485,21 @@
     const outPlaceholder = document.getElementById('outPlaceholder');
     const statusMsg = document.getElementById('statusMsg');
     const downloadBtn = document.getElementById('downloadBtn');
+
+    const badgeHead = document.getElementById('badgeHead');
+    const badgeTorso = document.getElementById('badgeTorso');
+    const badgeLegs = document.getElementById('badgeLegs');
+    const badgeFeet = document.getElementById('badgeFeet');
+
     const voiceRecBtn = document.getElementById('voiceRecBtn');
     const voiceStatus = document.getElementById('voiceStatus');
     const audioModeBadge = document.getElementById('audioModeBadge');
-
     const cutterContainer = document.getElementById('cutterContainer');
     const masterAudio = document.getElementById('masterAudio');
     const cutterProgress = document.getElementById('cutterProgress');
     const cutCountLabel = document.getElementById('cutCountLabel');
     const wordListBox = document.getElementById('wordListBox');
     const playAudioBtn = document.getElementById('playAudioBtn');
-
-    function initTrackers() {
-      // 1. FaceMesh for precise lip position & rotation
-      faceMesh = new FaceMesh({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-      });
-      faceMesh.setOptions({
-        maxNumFaces: 1,
-        refineLandmarks: false,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-      });
-      faceMesh.onResults((results) => {
-        if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-          latestLandmarks = results.multiFaceLandmarks[0];
-        }
-      });
-
-      // 2. Pose for Neck, Torso, Legs, and Feet tracking
-      poseTracker = new Pose({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-      });
-      poseTracker.setOptions({
-        modelComplexity: 1,
-        smoothLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-      });
-      poseTracker.onResults((results) => {
-        if (results.poseLandmarks) {
-          latestPoseLandmarks = results.poseLandmarks;
-        }
-      });
-    }
-    initTrackers();
 
     async function toggleCamera() {
       if (!stream) {
@@ -529,7 +512,6 @@
           camPlaceholder.style.display = 'none';
           webcam.style.display = 'block';
           canvas.style.display = 'none';
-          recordedHeadVideo.style.display = 'none';
           camBtn.textContent = 'Close Camera';
           snapBtn.disabled = false;
         } catch (e) {
@@ -552,11 +534,6 @@
     }
 
     function handleSnapshot() {
-      if (stage === 4) {
-        toggleFullBodyRecording();
-        return;
-      }
-
       if (!webcam.videoWidth) return;
 
       const w = webcam.videoWidth;
@@ -567,23 +544,47 @@
 
       const captured = new Image();
       captured.onload = () => {
-        webcam.style.display = 'none';
-        canvas.style.display = 'block';
-        drawControls.style.display = 'flex';
-        confirmStepBtn.disabled = true;
-
         if (stage === 0) {
-          closedImg = captured;
+          headImg = captured;
           stage = 1;
-          stepBanner.textContent = "✏️ Step 1: Draw a loop tightly around your CLOSED lips!";
+          webcam.style.display = 'none';
+          canvas.style.display = 'block';
+          drawControls.style.display = 'flex';
+          confirmStepBtn.disabled = true;
           snapBtn.disabled = true;
+          stepBanner.textContent = "✏️ Draw a tight loop around your CLOSED lips!";
           stopCamera();
         } else if (stage === 2) {
           openImg = captured;
           stage = 3;
-          stepBanner.textContent = "✏️ Step 2: Draw a loop tightly around ONLY the dark mouth opening/teeth!";
+          webcam.style.display = 'none';
+          canvas.style.display = 'block';
+          drawControls.style.display = 'flex';
+          confirmStepBtn.disabled = true;
           snapBtn.disabled = true;
+          stepBanner.textContent = "✏️ Draw a tight loop around ONLY the dark mouth opening/teeth!";
           stopCamera();
+        } else if (stage === 4) {
+          torsoImg = captured;
+          stage = 5;
+          badgeTorso.classList.add('done');
+          stepBanner.textContent = "3. Now point camera down and snapshot your LEGS & KNEES!";
+          snapBtn.textContent = "Snapshot Legs";
+        } else if (stage === 5) {
+          legsImg = captured;
+          stage = 6;
+          badgeLegs.classList.add('done');
+          stepBanner.textContent = "4. Point camera at your FEET & SHOES and snapshot!";
+          snapBtn.textContent = "Snapshot Feet";
+        } else if (stage === 6) {
+          feetImg = captured;
+          stage = 7;
+          badgeFeet.classList.add('done');
+          stepBanner.textContent = "✅ All body parts captured! Full 3D model compiled.";
+          snapBtn.disabled = true;
+          snapBtn.textContent = "Model Completed";
+          stopCamera();
+          checkReadyToGenerate();
         }
       };
       captured.src = canvas.toDataURL('image/jpeg', 0.95);
@@ -640,7 +641,7 @@
     window.addEventListener('mouseup', onEnd);
 
     function drawActivePath(isDone = false) {
-      const currentBg = stage === 1 ? closedImg : openImg;
+      const currentBg = stage === 1 ? headImg : openImg;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(currentBg, 0, 0, canvas.width, canvas.height);
 
@@ -666,7 +667,7 @@
     function clearCurrentDrawing() {
       currentDrawingPath = [];
       confirmStepBtn.disabled = true;
-      const currentBg = stage === 1 ? closedImg : openImg;
+      const currentBg = stage === 1 ? headImg : openImg;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(currentBg, 0, 0, canvas.width, canvas.height);
     }
@@ -675,20 +676,12 @@
       if (stage === 1) {
         closedMouthPath = [...currentDrawingPath];
         baseLipCenter = getPolyCenter(closedMouthPath);
-
-        let minX = Infinity, maxX = -Infinity;
-        closedMouthPath.forEach(p => {
-          if (p.x < minX) minX = p.x;
-          if (p.x > maxX) maxX = p.x;
-        });
-        baseLipWidth = Math.max(20, maxX - minX);
-
         currentDrawingPath = [];
         stage = 2;
 
-        stepBanner.textContent = "Step 2: Snapshot face with mouth SLIGHTLY OPEN (keep head in same position)!";
+        stepBanner.textContent = "Step 1b: Keep head still, hold mouth OPEN, and snapshot!";
         snapBtn.textContent = "Snapshot Open Face";
-        snapBtn.disabled = true;
+        snapBtn.disabled = false;
         drawControls.style.display = 'none';
         toggleCamera();
       } else if (stage === 3) {
@@ -697,8 +690,9 @@
         currentDrawingPath = [];
         stage = 4;
 
-        stepBanner.textContent = "Step 3: Step back so your neck, body, legs, and feet are visible! Tap 'Record 4s Full-Body Video'.";
-        snapBtn.textContent = "⏺ Record 4s Full-Body Video";
+        badgeHead.classList.add('done');
+        stepBanner.textContent = "2. Now point camera at your TORSO & CHEST close-up and snapshot!";
+        snapBtn.textContent = "Snapshot Torso";
         snapBtn.disabled = false;
         drawControls.style.display = 'none';
         toggleCamera();
@@ -728,69 +722,24 @@
       mouthPatchCanvas = document.createElement('canvas');
       mouthPatchCanvas.width = w;
       mouthPatchCanvas.height = h;
-      mouthPatchCtx = mouthPatchCanvas.getContext('2d');
+      const pctx = mouthPatchCanvas.getContext('2d');
 
-      mouthPatchCtx.save();
-      mouthPatchCtx.beginPath();
-      mouthPatchCtx.moveTo(openMouthPath[0].x - minX, openMouthPath[0].y - minY);
+      pctx.save();
+      pctx.beginPath();
+      pctx.moveTo(openMouthPath[0].x - minX, openMouthPath[0].y - minY);
       for (let i = 1; i < openMouthPath.length; i++) {
-        mouthPatchCtx.lineTo(openMouthPath[i].x - minX, openMouthPath[i].y - minY);
+        pctx.lineTo(openMouthPath[i].x - minX, openMouthPath[i].y - minY);
       }
-      mouthPatchCtx.closePath();
+      pctx.closePath();
 
-      mouthPatchCtx.shadowColor = 'black';
-      mouthPatchCtx.shadowBlur = 6;
-      mouthPatchCtx.fillStyle = 'black';
-      mouthPatchCtx.fill();
+      pctx.shadowColor = 'black';
+      pctx.shadowBlur = 6;
+      pctx.fillStyle = 'black';
+      pctx.fill();
 
-      mouthPatchCtx.globalCompositeOperation = 'source-in';
-      mouthPatchCtx.drawImage(openImg, -minX, -minY);
-      mouthPatchCtx.restore();
-    }
-
-    function toggleFullBodyRecording() {
-      if (!isRecordingHeadVid) {
-        if (!stream) {
-          alert("Open camera first!");
-          return;
-        }
-
-        headVideoChunks = [];
-        headMediaRecorder = new MediaRecorder(stream);
-        headMediaRecorder.ondataavailable = e => {
-          if (e.data.size > 0) headVideoChunks.push(e.data);
-        };
-
-        headMediaRecorder.onstop = () => {
-          headVideoBlob = new Blob(headVideoChunks, { type: 'video/webm' });
-          recordedHeadVideo.src = URL.createObjectURL(headVideoBlob);
-          recordedHeadVideo.play();
-
-          stage = 5;
-          stepBanner.textContent = "✅ Full-Body Rig Ready! Dynamic neck & posture tracking locked.";
-          snapBtn.textContent = "Rig Completed";
-          snapBtn.disabled = true;
-          stopCamera();
-
-          checkReadyToGenerate();
-        };
-
-        headMediaRecorder.start();
-        isRecordingHeadVid = true;
-        snapBtn.textContent = "🛑 Stop Video (or wait 4s)";
-        snapBtn.style.background = "#ef4444";
-        stepBanner.textContent = "🎥 Recording... Turn head slightly while standing naturally!";
-
-        setTimeout(() => {
-          if (isRecordingHeadVid) toggleFullBodyRecording();
-        }, 4000);
-      } else {
-        isRecordingHeadVid = false;
-        snapBtn.style.background = "#1c2233";
-        if (headMediaRecorder && headMediaRecorder.state !== 'inactive') {
-          headMediaRecorder.stop();
-        }
-      }
+      pctx.globalCompositeOperation = 'source-in';
+      pctx.drawImage(openImg, -minX, -minY);
+      pctx.restore();
     }
 
     function getPolyCenter(pts) {
@@ -799,6 +748,7 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
+    // AUDIO RECORDING & WORD SLICER
     async function toggleVoiceRecording() {
       if (!isMicRecording) {
         try {
@@ -836,7 +786,7 @@
           isMicRecording = true;
           voiceRecBtn.textContent = "🛑 Stop Master Recording";
           voiceRecBtn.style.background = "#ef4444";
-          voiceStatus.textContent = "Recording! Speak your target words clearly with pauses.";
+          voiceStatus.textContent = "Recording! Speak your target words clearly with natural pauses.";
         } catch (e) {
           alert("Microphone access denied!");
         }
@@ -1002,34 +952,35 @@
     }
 
     function checkReadyToGenerate() {
-      if (stage === 5) {
+      if (stage === 7) {
         genBtn.disabled = false;
         const hasWords = Object.keys(labeledSoundboard).length > 0;
         if (hasWords) {
           genBtn.textContent = `Generate Video (${Object.keys(labeledSoundboard).length} Labeled Words)`;
-          statusMsg.textContent = "Ready to synthesize full-body avatar with voiceover!";
+          statusMsg.textContent = "Ready to synthesize full-body avatar with labeled voice clips!";
         } else {
-          genBtn.textContent = "Generate Video (Silent Full-Body Rig Ready)";
-          statusMsg.textContent = "Ready to render full-body puppet with dynamic neck adjustment!";
+          genBtn.textContent = "Generate Video (Silent & Full Body Rig Ready)";
+          statusMsg.textContent = "Ready to render full-body puppet (add audio in post)!";
         }
       }
     }
 
+    // SYNTHESIS & FULL-BODY RENDERING PIPELINE
     async function executeSynthesis() {
       const scriptText = scriptInput.value.trim();
-      if (!scriptText || stage !== 5 || !headVideoBlob) return;
+      if (!scriptText || stage !== 7) return;
 
       genBtn.disabled = true;
-      statusMsg.textContent = "Tracking face & full-body posture with neck compensation...";
+      statusMsg.textContent = "Stitching modular body parts & synthesizing speech...";
       outPlaceholder.style.display = "block";
-      outPlaceholder.textContent = "Synthesizing...";
+      outPlaceholder.textContent = "Rendering full puppet...";
       outVideo.style.display = "none";
 
       canvas.style.display = 'block';
       webcam.style.display = 'none';
 
-      canvas.width = recordedHeadVideo.videoWidth || 720;
-      canvas.height = recordedHeadVideo.videoHeight || 1280;
+      canvas.width = 720;
+      canvas.height = 1280;
 
       const hasAudio = Object.keys(labeledSoundboard).length > 0;
 
@@ -1067,8 +1018,8 @@
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
         statusMsg.textContent = hasAudio 
-          ? "Full-body video generated with tracked posture and voiceover!" 
-          : "Silent full-body video generated! Import into your editor for voiceover.";
+          ? "Full-body video generated with synced voiceover!" 
+          : "Silent full-body video generated! Add your voiceover in an editor.";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
@@ -1086,9 +1037,7 @@
       let currentVowelOpen = 0;
       let targetVowelOpen = 0;
       let isRendering = true;
-
-      recordedHeadVideo.currentTime = 0;
-      await recordedHeadVideo.play();
+      let renderStartTime = performance.now();
 
       function playNextWord(index) {
         if (index >= wordsInScript.length) {
@@ -1096,7 +1045,6 @@
           setTimeout(() => {
             isRendering = false;
             recorder.stop();
-            recordedHeadVideo.pause();
           }, 450);
           return;
         }
@@ -1125,9 +1073,7 @@
           srcNode.stop(now + wordDur + 0.02);
 
           targetVowelOpen = 0.85;
-          setTimeout(() => {
-            targetVowelOpen = 0.2;
-          }, (wordDur * 0.5) * 1000);
+          setTimeout(() => { targetVowelOpen = 0.2; }, (wordDur * 0.5) * 1000);
 
           const nextDelay = (wordDur + 0.07) * 1000;
           setTimeout(() => {
@@ -1139,9 +1085,7 @@
           const wordDur = Math.max(0.24, Math.min(0.55, wordLen * 0.075));
 
           targetVowelOpen = 0.85;
-          setTimeout(() => {
-            targetVowelOpen = 0.25;
-          }, (wordDur * 0.5) * 1000);
+          setTimeout(() => { targetVowelOpen = 0.25; }, (wordDur * 0.5) * 1000);
 
           const nextDelay = (wordDur + 0.06) * 1000;
           setTimeout(() => {
@@ -1153,100 +1097,76 @@
 
       playNextWord(0);
 
-      // FULL-BODY RENDER LOOP WITH PROCEDURAL NECK COMPENSATION
-      async function renderLoop() {
+      // FULL ANATOMICAL COMPOSITION LOOP
+      function renderLoop(now) {
         if (!isRendering && currentVowelOpen < 0.03) return;
 
         currentVowelOpen += (targetVowelOpen - currentVowelOpen) * 0.35;
 
-        if (recordedHeadVideo.readyState >= 2) {
-          if (faceMesh) await faceMesh.send({ image: recordedHeadVideo });
-          if (poseTracker) await poseTracker.send({ image: recordedHeadVideo });
-        }
+        const elapsedSec = (now - renderStartTime) / 1000;
+
+        const headTurnAngle = Math.sin(elapsedSec * 1.8) * 0.08;
+        const neckSwayX = Math.sin(elapsedSec * 1.8) * 12;
+        const breathY = Math.sin(elapsedSec * 2.2) * 4;
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#06070a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // 1. Procedural Neck & Shoulder Counter-Adjustment
-        let neckCounterTwist = 0;
-        let neckPivotX = canvas.width * 0.5;
-        let neckPivotY = canvas.height * 0.35;
-
-        if (latestPoseLandmarks && latestPoseLandmarks[11] && latestPoseLandmarks[12]) {
-          const leftShoulder = latestPoseLandmarks[11];
-          const rightShoulder = latestPoseLandmarks[12];
-          const shoulderMidX = ((leftShoulder.x + rightShoulder.x) / 2) * canvas.width;
-          const shoulderMidY = ((leftShoulder.y + rightShoulder.y) / 2) * canvas.height;
-
-          neckPivotX = shoulderMidX;
-          neckPivotY = shoulderMidY;
-
-          if (latestLandmarks && latestLandmarks[152]) {
-            const chinX = latestLandmarks[152].x * canvas.width;
-            const headTurnDeltaX = chinX - shoulderMidX;
-            // 28% procedural counter-twist to simulate neck flex
-            neckCounterTwist = (headTurnDeltaX / canvas.width) * 0.28;
-          }
+        // 1. Draw Feet (920px to 1280px)
+        if (feetImg) {
+          ctx.drawImage(feetImg, (canvas.width - 400) / 2, 920, 400, 360);
         }
 
-        // Draw Full-Body Base Frame with procedural neck elasticity
-        ctx.save();
-        if (Math.abs(neckCounterTwist) > 0.005) {
-          ctx.translate(neckPivotX, neckPivotY);
-          ctx.rotate(neckCounterTwist);
-          ctx.translate(-neckPivotX, -neckPivotY);
+        // 2. Draw Legs (580px to 960px)
+        if (legsImg) {
+          ctx.drawImage(legsImg, (canvas.width - 420) / 2, 580 + (breathY * 0.3), 420, 380);
         }
 
-        if (recordedHeadVideo.readyState >= 2) {
-          ctx.drawImage(recordedHeadVideo, 0, 0, canvas.width, canvas.height);
-        } else {
-          ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
-        }
-        ctx.restore();
-
-        // 2. Track Mouth Anchor & 3D Perspective Scale
-        let trackedAnchorX = baseLipCenter.x;
-        let trackedAnchorY = baseLipCenter.y;
-        let headTiltAngle = 0;
-        let perspectiveScaleX = 1.0;
-
-        if (latestLandmarks) {
-          const upperLip = latestLandmarks[13];
-          const lowerLip = latestLandmarks[14];
-          const leftCorner = latestLandmarks[61];
-          const rightCorner = latestLandmarks[291];
-
-          trackedAnchorX = ((upperLip.x + lowerLip.x) / 2) * canvas.width;
-          trackedAnchorY = ((upperLip.y + lowerLip.y) / 2) * canvas.height;
-
-          headTiltAngle = Math.atan2(
-            (rightCorner.y - leftCorner.y) * canvas.height,
-            (rightCorner.x - leftCorner.x) * canvas.width
-          );
-
-          const currentWidth = Math.hypot(
-            (rightCorner.x - leftCorner.x) * canvas.width,
-            (rightCorner.y - leftCorner.y) * canvas.height
-          );
-          perspectiveScaleX = Math.min(1.0, Math.max(0.3, currentWidth / baseLipWidth));
+        // 3. Draw Torso & Shoulders (320px to 620px)
+        if (torsoImg) {
+          ctx.drawImage(torsoImg, (canvas.width - 480) / 2, 320 + breathY, 480, 310);
         }
 
-        // 3. Composite Feathered Inner Mouth Cavity
-        if (currentVowelOpen > 0.04 && mouthPatchCanvas) {
+        // 4. Draw Swiveling Head & Neck (40px to 360px)
+        if (headImg) {
+          const headW = 340;
+          const headH = 340;
+          const neckPivotX = canvas.width / 2 + neckSwayX;
+          const neckPivotY = 340 + breathY;
+
           ctx.save();
+          ctx.translate(neckPivotX, neckPivotY);
+          ctx.rotate(headTurnAngle);
+          ctx.translate(-neckPivotX, -neckPivotY);
 
-          ctx.translate(trackedAnchorX, trackedAnchorY);
-          ctx.rotate(headTiltAngle + neckCounterTwist);
-          ctx.scale(perspectiveScaleX, Math.min(1.0, 0.45 + currentVowelOpen * 0.55));
+          const headDrawX = (canvas.width - headW) / 2 + neckSwayX;
+          const headDrawY = 40 + breathY;
 
-          ctx.globalAlpha = Math.min(1.0, currentVowelOpen * 1.8);
+          ctx.drawImage(headImg, headDrawX, headDrawY, headW, headH);
 
-          ctx.drawImage(
-            mouthPatchCanvas,
-            -patchRelCenterX,
-            -patchRelCenterY,
-            patchBoundingBox.width,
-            patchBoundingBox.height
-          );
+          // 5. Composite Feathered Mouth on Swiveling Head
+          if (currentVowelOpen > 0.04 && mouthPatchCanvas) {
+            const scaleX = headW / headImg.width;
+            const scaleY = headH / headImg.height;
+
+            const mouthScreenX = headDrawX + (baseLipCenter.x * scaleX);
+            const mouthScreenY = headDrawY + (baseLipCenter.y * scaleY);
+
+            ctx.save();
+            ctx.translate(mouthScreenX, mouthScreenY);
+            ctx.scale(1.0, Math.min(1.0, 0.45 + currentVowelOpen * 0.55));
+            ctx.globalAlpha = Math.min(1.0, currentVowelOpen * 1.8);
+
+            ctx.drawImage(
+              mouthPatchCanvas,
+              -patchRelCenterX * scaleX,
+              -patchRelCenterY * scaleY,
+              patchBoundingBox.width * scaleX,
+              patchBoundingBox.height * scaleY
+            );
+            ctx.restore();
+          }
 
           ctx.restore();
         }
@@ -1260,7 +1180,7 @@
     function downloadVid() {
       const a = document.createElement('a');
       a.href = outVideo.src;
-      a.download = 'vofa-fullbody-render.webm';
+      a.download = 'vofa-modular-body.webm';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
