@@ -149,7 +149,6 @@
       width: 100%;
     }
 
-    /* mouth guide slider container */
     .slider-box {
       display: none;
       flex-direction: column;
@@ -235,13 +234,12 @@
   </div>
 
   <main>
-    <!-- Biometrics Card -->
     <div class="panel">
       <h2>Face & Lip Alignment</h2>
 
       <div class="view-box" id="viewBox">
         <video id="webcam" autoplay playsinline muted></video>
-        <canvas id="renderCanvas" width="400" height="225"></canvas>
+        <canvas id="renderCanvas"></canvas>
         <div class="placeholder-msg" id="camPlaceholder">Webcam feed offline</div>
       </div>
 
@@ -250,7 +248,6 @@
         <button id="snapBtn" onclick="freezePortrait()" disabled>Snapshot Face</button>
       </div>
 
-      <!-- draggable guide adjuster -->
       <div class="slider-box" id="sliderBox">
         <label>
           <span>Drag red line to your actual mouth line:</span>
@@ -267,7 +264,6 @@
       </button>
     </div>
 
-    <!-- Output Card -->
     <div class="panel">
       <h2>Generated Output</h2>
 
@@ -284,7 +280,7 @@
   <script>
     let stream = null;
     let rawCapturedImage = null;
-    let detectedMouthY = 112; // 16:9 canvas is 400x225, so center-mouth is around 100-130
+    let detectedMouthY = 112;
 
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
@@ -306,9 +302,10 @@
       if (!stream) {
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "user" }
+            video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
           });
           webcam.srcObject = stream;
+          await webcam.play();
           camPlaceholder.style.display = 'none';
           camBtn.textContent = 'Close Camera';
           snapBtn.disabled = false;
@@ -326,32 +323,41 @@
     }
 
     function freezePortrait() {
+      if (!webcam.videoWidth || webcam.videoWidth === 0) {
+        alert("Camera is still warming up, try in 1 sec 😭");
+        return;
+      }
+
+      // Lock canvas dimensions to webcam ratio
       canvas.width = 400;
-      canvas.height = 225; // Locked 16:9 aspect ratio matching view box
-      ctx.drawImage(webcam, 0, 0, 400, 225);
+      canvas.height = Math.round((webcam.videoHeight / webcam.videoWidth) * 400);
+
+      // Draw the live webcam frame to canvas
+      ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
 
       rawCapturedImage = new Image();
-      rawCapturedImage.src = canvas.toDataURL('image/png');
+      rawCapturedImage.onload = () => {
+        webcam.style.display = 'none';
+        canvas.style.display = 'block';
+        sliderBox.style.display = 'flex';
 
-      // Stop camera
+        mouthSlider.max = canvas.height - 10;
+        detectedMouthY = Math.round(canvas.height * 0.55);
+        mouthSlider.value = detectedMouthY;
+        
+        redrawPreviewGuide();
+
+        snapBtn.textContent = 'Retake Photo';
+        snapBtn.onclick = () => location.reload();
+        genBtn.disabled = false;
+        statusMsg.textContent = "Adjust slider right over your lips!";
+      };
+      rawCapturedImage.src = canvas.toDataURL('image/jpeg', 0.95);
+
       if (stream) {
         stream.getTracks().forEach(t => t.stop());
         stream = null;
       }
-      webcam.style.display = 'none';
-      canvas.style.display = 'block';
-      sliderBox.style.display = 'flex';
-
-      // Default seam near center face
-      detectedMouthY = 115;
-      mouthSlider.value = detectedMouthY;
-      
-      redrawPreviewGuide();
-
-      snapBtn.textContent = 'Retake Photo';
-      snapBtn.onclick = () => location.reload();
-      genBtn.disabled = false;
-      statusMsg.textContent = "Adjust the slider so the red line sits right on your lips!";
     }
 
     function updateSeam(val) {
@@ -360,14 +366,13 @@
       redrawPreviewGuide();
     }
 
-    // Touch/click directly on canvas to reposition line
     canvas.addEventListener('pointerdown', (e) => {
       const rect = canvas.getBoundingClientRect();
       const clickY = e.clientY - rect.top;
       const scaleY = canvas.height / rect.height;
       const targetY = Math.round(clickY * scaleY);
 
-      if (targetY > 20 && targetY < 210) {
+      if (targetY > 10 && targetY < canvas.height - 10) {
         mouthSlider.value = targetY;
         updateSeam(targetY);
       }
@@ -375,18 +380,17 @@
 
     function redrawPreviewGuide() {
       if (!rawCapturedImage) return;
-      ctx.clearRect(0, 0, 400, 225);
-      ctx.drawImage(rawCapturedImage, 0, 0, 400, 225);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(rawCapturedImage, 0, 0, canvas.width, canvas.height);
 
-      // Draw high-visibility alignment laser line
       ctx.strokeStyle = '#ec4899';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 4]);
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 6]);
       ctx.beginPath();
       ctx.moveTo(0, detectedMouthY);
-      ctx.lineTo(400, detectedMouthY);
+      ctx.lineTo(canvas.width, detectedMouthY);
       ctx.stroke();
-      ctx.setLineDash([]); // reset
+      ctx.setLineDash([]);
     }
 
     function executeSynthesis() {
@@ -430,18 +434,18 @@
       function renderLoop() {
         if (!animating) return;
 
-        ctx.clearRect(0, 0, 400, 225);
-        // 1. Draw fixed upper skull down to custom seam
-        ctx.drawImage(rawCapturedImage, 0, 0, 400, detectedMouthY, 0, 0, 400, detectedMouthY);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Fixed upper skull
+        ctx.drawImage(rawCapturedImage, 0, 0, canvas.width, detectedMouthY, 0, 0, canvas.width, detectedMouthY);
 
-        // 2. Harmonic displacement for jaw
-        const mouthShift = Math.sin(frame * 0.45) > 0 ? Math.sin(frame * 0.45) * 11 : 0;
+        // Jaw displacement
+        const mouthShift = Math.sin(frame * 0.45) > 0 ? Math.sin(frame * 0.45) * 12 : 0;
 
-        // 3. Draw lower jaw moving downward
+        // Moving lower jaw
         ctx.drawImage(
           rawCapturedImage, 
-          0, detectedMouthY, 400, 225 - detectedMouthY, 
-          0, detectedMouthY + mouthShift, 400, 225 - detectedMouthY
+          0, detectedMouthY, canvas.width, canvas.height - detectedMouthY, 
+          0, detectedMouthY + mouthShift, canvas.width, canvas.height - detectedMouthY
         );
 
         frame++;
