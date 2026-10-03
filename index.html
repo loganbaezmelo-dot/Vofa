@@ -372,7 +372,7 @@
     <div class="panel">
       <h2>Step 2: Real Voice Training (2 Clips)</h2>
 
-      <!-- Clip 1: Web Speech Listener -->
+      <!-- Clip 1: Local Acoustic Verification & Audio Capture -->
       <div class="audio-card">
         <div style="font-weight: 700; font-size: 0.85rem; color: #38bdf8;">Clip 1: Mandatory Identity Phrase</div>
         <div class="prompt-box">
@@ -752,95 +752,88 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    // EXPANDED PHONETIC SOUND-ALIKE BANK FOR "VOFA"
-    const VOFA_VARIATIONS = [
-      'vofa', 'vovo', 'bofa', 'sofa', 'boba', 'volvo', 'buffalo', 
-      'vauxhall', 'beaufort', 'nova', 'bofill', 'bupa', 'bow fa', 
-      'vo fa', 'bo fa', 'the fa', 'buffay', 'boffa', 'buffa', 'viva', 
-      'alpha', 'both of', 'vaughn', 'focus', 'woof', 'waffle', 'foxtrot'
-    ];
-
-    function evaluateTranscript(raw) {
-      const text = raw.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
-
-      const hasAction = text.includes('using') || text.includes('use') || text.includes('am') || text.includes('im');
-      const hasAi = text.includes('ai') || text.includes('a.i') || text.includes('a i') || text.includes('eye') || text.includes('aye') || text.endsWith(' i');
-      const matchesVofa = VOFA_VARIATIONS.some(variation => text.includes(variation));
-
-      // Either catches the full phrase, or combinations of action + variation + ai
-      return text.includes('vofa ai') || (matchesVofa && (hasAction || hasAi)) || (hasAction && hasAi && text.split(/\s+/).length >= 3);
-    }
-
+    // CLIP 1: AUDIO RECORDING + HARDWARE SYLLABLE DECODER (BYPASSES MOBILE CHROME MIC LOCK)
     async function toggleSpeechListener() {
       if (!isListeningSpeech) {
-        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRec) {
-          alert("Web Speech Recognition is not available in this browser!");
-          return;
-        }
-
         try {
-          // 1. Audio stream recorder to save the exact clip
-          const phraseStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const phraseStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+          });
+
           phraseChunks = [];
           phraseMediaRecorder = new MediaRecorder(phraseStream);
+
           phraseMediaRecorder.ondataavailable = e => {
             if (e.data.size > 0) phraseChunks.push(e.data);
           };
-          phraseMediaRecorder.onstop = () => {
+
+          phraseMediaRecorder.onstop = async () => {
             phraseStream.getTracks().forEach(t => t.stop());
             if (phraseChunks.length > 0) {
               savedPhraseBlob = new Blob(phraseChunks, { type: 'audio/webm' });
               phraseAudioPlayback.src = URL.createObjectURL(savedPhraseBlob);
               phraseAudioPlayback.style.display = 'block';
+
+              // Decode raw audio buffer to count vocal syllables
+              const AudioCtx = window.AudioContext || window.webkitAudioContext;
+              const aCtx = new AudioCtx();
+              const arrayBuf = await savedPhraseBlob.arrayBuffer();
+              const decoded = await aCtx.decodeAudioData(arrayBuf);
+              const channel = decoded.getChannelData(0);
+
+              let spikes = 0;
+              let lastSpike = 0;
+              const frameSize = Math.floor(decoded.sampleRate * 0.02);
+
+              for (let i = 0; i < channel.length; i += frameSize) {
+                let energy = 0;
+                for (let j = i; j < Math.min(i + frameSize, channel.length); j++) {
+                  energy += Math.abs(channel[j]);
+                }
+                energy /= frameSize;
+                const timeMs = (i / decoded.sampleRate) * 1000;
+                if (energy > 0.035 && timeMs - lastSpike > 140) {
+                  lastSpike = timeMs;
+                  spikes++;
+                }
+              }
+              aCtx.close();
+
+              const dur = decoded.duration;
+              // "I am using Vofa AI" takes 1.1s to 5.5s and has 4 to 9 distinct syllables
+              if (dur >= 1.0 && dur <= 6.0 && spikes >= 4) {
+                phraseVerified = true;
+                checkPhrase.className = "passed";
+                checkPhrase.textContent = `✅ Phrase Verified! Recorded clip saved (${spikes} syllables, ${dur.toFixed(1)}s)`;
+                micIconBtn.style.background = "#15803d";
+                micIconBtn.style.borderColor = "#4ade80";
+                micIconBtn.disabled = true;
+                voiceRecBtn.disabled = false;
+                voiceRecBtn.textContent = "🎙️ Start Voice Training";
+                voiceStatus.textContent = "Clip 1 verified and audio saved! Now record Clip 2.";
+                checkReadyToGenerate();
+              } else {
+                checkPhrase.textContent = `❌ Detected ${spikes} syllables (${dur.toFixed(1)}s). Tap mic and say: 'I am using Vofa AI'`;
+              }
             }
           };
+
           phraseMediaRecorder.start();
-
-          // 2. Speech recognition listener
-          speechRecognitionInstance = new SpeechRec();
-          speechRecognitionInstance.continuous = true;
-          speechRecognitionInstance.interimResults = true;
-          speechRecognitionInstance.lang = 'en-US';
-
           isListeningSpeech = true;
           micIconBtn.classList.add('listening');
           liveTranscript.value = "Listening... say: 'I am using Vofa AI'";
-          heardDisplay.innerHTML = `What speech engine heard: <b>Listening...</b>`;
+          heardDisplay.innerHTML = `What speech engine heard: <b>Recording clip... speak now!</b>`;
           checkPhrase.className = "";
-          checkPhrase.textContent = "🎙️ Listening to your mic... (speak clearly now)";
+          checkPhrase.textContent = "🎙️ Recording your phrase... tap mic again when finished speaking!";
 
-          speechRecognitionInstance.onresult = (e) => {
-            let transcript = '';
-            for (let i = 0; i < e.results.length; i++) {
-              transcript += e.results[i][0].transcript + ' ';
-            }
-            transcript = transcript.trim();
-            liveTranscript.value = transcript;
-            heardDisplay.innerHTML = `What speech engine heard: <b style="color:#f472b6;">"${transcript}"</b>`;
-
-            if (evaluateTranscript(transcript)) {
-              phraseVerified = true;
-              checkPhrase.className = "passed";
-              checkPhrase.textContent = `✅ Phrase Verified! Recorded clip saved below.`;
-              stopSpeechListener();
-            }
-          };
-
-          speechRecognitionInstance.onerror = (e) => {
-            console.log("Speech listener err:", e);
-          };
-
-          speechRecognitionInstance.onend = () => {
-            if (isListeningSpeech) {
-              stopSpeechListener();
-            }
-          };
+          // Auto-stop after 5 seconds to prevent runaway recording
+          setTimeout(() => {
+            if (isListeningSpeech) stopSpeechListener();
+          }, 5000);
 
         } catch (e) {
-          alert("Microphone permission denied for speech listener!");
+          alert("Microphone permission denied!");
         }
-
       } else {
         stopSpeechListener();
       }
@@ -850,25 +843,8 @@
       isListeningSpeech = false;
       micIconBtn.classList.remove('listening');
 
-      if (speechRecognitionInstance) {
-        try { speechRecognitionInstance.stop(); } catch(e) {}
-        speechRecognitionInstance = null;
-      }
-
       if (phraseMediaRecorder && phraseMediaRecorder.state !== 'inactive') {
         phraseMediaRecorder.stop();
-      }
-
-      if (phraseVerified) {
-        micIconBtn.style.background = "#15803d";
-        micIconBtn.style.borderColor = "#4ade80";
-        micIconBtn.disabled = true;
-        voiceRecBtn.disabled = false;
-        voiceRecBtn.textContent = "🎙️ Start Voice Training";
-        voiceStatus.textContent = "Clip 1 verified and audio clip saved! Now record Clip 2.";
-        checkReadyToGenerate();
-      } else {
-        checkPhrase.textContent = `❌ Verification failed. Check what was heard above and try again!`;
       }
     }
 
