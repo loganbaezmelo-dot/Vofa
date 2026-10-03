@@ -278,10 +278,10 @@
   </main>
 
   <script>
-    let stream = null;
+    let videoStream = null;
+    let micStream = null;
     let rawCapturedImage = null;
     let detectedMouthY = 112;
-    let audioCtx = null;
 
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
@@ -300,12 +300,20 @@
     const downloadBtn = document.getElementById('downloadBtn');
 
     async function toggleCamera() {
-      if (!stream) {
+      if (!videoStream) {
         try {
-          stream = await navigator.mediaDevices.getUserMedia({
+          // Request camera and microphone access upfront so audio can be recorded cleanly
+          videoStream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
           });
-          webcam.srcObject = stream;
+          
+          try {
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          } catch(e) {
+            console.warn("Microphone not available, video will render without mic track");
+          }
+
+          webcam.srcObject = videoStream;
           await webcam.play();
           camPlaceholder.style.display = 'none';
           camBtn.textContent = 'Close Camera';
@@ -314,8 +322,8 @@
           alert("Couldn't open camera");
         }
       } else {
-        stream.getTracks().forEach(t => t.stop());
-        stream = null;
+        videoStream.getTracks().forEach(t => t.stop());
+        videoStream = null;
         webcam.srcObject = null;
         camPlaceholder.style.display = 'block';
         camBtn.textContent = 'Open Camera';
@@ -353,9 +361,9 @@
       };
       rawCapturedImage.src = canvas.toDataURL('image/jpeg', 0.95);
 
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
-        stream = null;
+      if (videoStream) {
+        videoStream.getTracks().forEach(t => t.stop());
+        videoStream = null;
       }
     }
 
@@ -402,42 +410,25 @@
       outPlaceholder.textContent = "Rendering...";
       outVideo.style.display = "none";
 
-      // 1. Initialize Web Audio Context & destination node for recording
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const audioDestination = audioCtx.createMediaStreamDestination();
-
-      // Audio synth engine: Generates acoustic vocal tones synced to syllables
-      const osc = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(140, audioCtx.currentTime); // Fundamental vocal pitch
-      gainNode.gain.setValueAtTime(0.001, audioCtx.currentTime);
-
-      osc.connect(gainNode);
-      gainNode.connect(audioDestination);
-      gainNode.connect(audioCtx.destination); // also play out loud
-      osc.start();
-
-      // 2. Merge canvas stream + synthesized audio track into one MediaStream
       const canvasStream = canvas.captureStream(30);
-      const combinedStream = new MediaStream([
-        ...canvasStream.getVideoTracks(),
-        ...audioDestination.stream.getAudioTracks()
-      ]);
+      
+      // Combine canvas video + microphone audio track if available
+      const tracks = [...canvasStream.getVideoTracks()];
+      if (micStream && micStream.getAudioTracks().length > 0) {
+        tracks.push(micStream.getAudioTracks()[0]);
+      }
 
+      const combinedStream = new MediaStream(tracks);
       const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
       const chunks = [];
 
       recorder.ondataavailable = e => chunks.push(e.data);
       recorder.onstop = () => {
-        osc.stop();
-        audioCtx.close();
-
         const blob = new Blob(chunks, { type: 'video/webm' });
         outVideo.src = URL.createObjectURL(blob);
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
-        statusMsg.textContent = "Render complete! Audio and video tracks merged.";
+        statusMsg.textContent = "Render complete! Mouth synced without black void.";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
@@ -445,7 +436,6 @@
 
       recorder.start();
 
-      // Also trigger browser speech synth in tandem
       const utterance = new SpeechSynthesisUtterance(text);
       window.speechSynthesis.speak(utterance);
 
@@ -461,21 +451,23 @@
         if (!animating) return;
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        // Fixed upper skull
-        ctx.drawImage(rawCapturedImage, 0, 0, canvas.width, detectedMouthY, 0, 0, canvas.width, detectedMouthY);
 
-        // Jaw displacement
-        const mouthShift = Math.sin(frame * 0.45) > 0 ? Math.sin(frame * 0.45) * 12 : 0;
+        const mouthShift = Math.sin(frame * 0.45) > 0 ? Math.sin(frame * 0.45) * 11 : 0;
 
-        // Modulate vocal synth volume with the mouth opening
-        if (mouthShift > 2) {
-          gainNode.gain.setTargetAtTime(0.18, audioCtx.currentTime, 0.02);
-          osc.frequency.setTargetAtTime(130 + mouthShift * 4, audioCtx.currentTime, 0.02);
-        } else {
-          gainNode.gain.setTargetAtTime(0.001, audioCtx.currentTime, 0.02);
+        // 1. Draw mouth interior cavity so it's not a pitch black void
+        if (mouthShift > 0) {
+          ctx.fillStyle = '#3a080e'; // deep mouth cavity shadow
+          ctx.fillRect(0, detectedMouthY, canvas.width, mouthShift);
+
+          // Subtle teeth line
+          ctx.fillStyle = '#f1f5f9';
+          ctx.fillRect(canvas.width * 0.38, detectedMouthY, canvas.width * 0.24, Math.min(3, mouthShift));
         }
 
-        // Moving lower jaw
+        // 2. Fixed upper skull
+        ctx.drawImage(rawCapturedImage, 0, 0, canvas.width, detectedMouthY, 0, 0, canvas.width, detectedMouthY);
+
+        // 3. Moving lower jaw
         ctx.drawImage(
           rawCapturedImage, 
           0, detectedMouthY, canvas.width, canvas.height - detectedMouthY, 
