@@ -292,32 +292,43 @@
       </div>
     </div>
 
-    <!-- Acoustic Voice Calibration & Peak Analyzer -->
+    <!-- Acoustic Voice Calibration & 2-Clip Verification -->
     <div class="panel">
-      <h2>Step 2: Real Voice Training & Noise Filter</h2>
-      <div class="audio-card">
-        <p style="font-size: 0.8rem; color: var(--muted);">
-          Record in a quiet room if possible (auto noise-gate enabled). <b>1-2 minutes is ideal</b> (minimum 30 seconds required).
-        </p>
+      <h2>Step 2: Real Voice Training (2 Clips)</h2>
 
+      <!-- Clip 1: Calibration Phrase -->
+      <div class="audio-card">
+        <div style="font-weight: 700; font-size: 0.85rem; color: #38bdf8;">Clip 1: Mandatory Identity Phrase</div>
         <div class="prompt-box">
-          <b>Mandatory phrase:</b><br>
-          <i>"I am using Vofa AI."</i><br><br>
-          <b>Read out loud to train your voice bank:</b><br>
+          Press record and say clearly:<br>
+          <b style="color: #f472b6; font-size: 0.95rem;">"I am using Vofa AI."</b>
+        </div>
+        <div class="checklist">
+          <span id="checkPhrase">❌ Phrase verification pending</span>
+        </div>
+        <div class="row">
+          <button id="phraseRecBtn" onclick="togglePhraseRecording()">🎙️ Record Phrase</button>
+        </div>
+      </div>
+
+      <!-- Clip 2: Voice Model Training -->
+      <div class="audio-card">
+        <div style="font-weight: 700; font-size: 0.85rem; color: #a855f7;">Clip 2: Phonetic Voice Bank (30s minimum)</div>
+        <p style="font-size: 0.8rem; color: var(--muted);">
+          Read out loud to train your phoneme bank:
+        </p>
+        <div class="prompt-box">
           The quick brown fox jumps over the lazy dog. Today we are testing a completely rule-based browser video generation pipeline that isolates lips and extracts formant slices without using any external artificial intelligence APIs.
         </div>
-
         <div class="checklist">
           <span id="checkTime">❌ Spoke for at least 30 seconds (0s / 30s)</span>
           <span id="checkWords">❌ Read enough speech (0 / 25 syllables detected)</span>
         </div>
-
         <div class="timer" id="recTimer">00:00</div>
-
         <div class="row">
-          <button id="voiceRecBtn" onclick="toggleVoiceRecording()">🎙️ Start Voice Training</button>
+          <button id="voiceRecBtn" onclick="toggleVoiceRecording()" disabled>🎙️ Start Voice Training (Pass Clip 1 First)</button>
         </div>
-        <p id="voiceStatus" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Voice model not trained yet</p>
+        <p id="voiceStatus" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Clip 1 required before recording voice bank</p>
       </div>
     </div>
 
@@ -327,7 +338,7 @@
       <textarea id="scriptInput">hello welcome to vofa ai rule based speech generator</textarea>
 
       <button class="primary" id="genBtn" onclick="executeSynthesis()" disabled>
-        Generate Video (Complete Face & Voice First)
+        Generate Video (Complete Face & Both Clips First)
       </button>
 
       <div class="view-box" style="margin-top: 10px;">
@@ -364,6 +375,11 @@
     let voicePeakCount = 0;
     let lastPeakTime = 0;
 
+    // Clip 1 verification state
+    let isPhraseRecording = false;
+    let phraseRecognizer = null;
+    let phraseVerified = false;
+
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
     const ctx = canvas.getContext('2d');
@@ -380,8 +396,10 @@
     const statusMsg = document.getElementById('statusMsg');
     const downloadBtn = document.getElementById('downloadBtn');
     const voiceRecBtn = document.getElementById('voiceRecBtn');
+    const phraseRecBtn = document.getElementById('phraseRecBtn');
     const recTimer = document.getElementById('recTimer');
     const voiceStatus = document.getElementById('voiceStatus');
+    const checkPhrase = document.getElementById('checkPhrase');
     const checkTime = document.getElementById('checkTime');
     const checkWords = document.getElementById('checkWords');
 
@@ -622,7 +640,7 @@
         openMouthPath = [...currentDrawingPath];
         stage = 4;
 
-        stepBanner.textContent = "✅ Face setup complete! Record your voice below.";
+        stepBanner.textContent = "✅ Face setup complete! Record your voice clips below.";
         drawControls.style.display = 'none';
         checkReadyToGenerate();
 
@@ -637,7 +655,72 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    // NATIVE HARDWARE ACOUSTIC ENERGY TRACKER (NO SPEECH-REC MIC BUGS)
+    // CLIP 1: PHRASE RECOGNITION (STANDALONE TO PREVENT MIC COLLISION)
+    function togglePhraseRecording() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        phraseVerified = true;
+        checkPhrase.className = "passed";
+        checkPhrase.textContent = "✅ Browser bypass: Phrase verified (No WebSpeech API)";
+        voiceRecBtn.disabled = false;
+        voiceRecBtn.textContent = "🎙️ Start Voice Training";
+        voiceStatus.textContent = "Clip 1 verified! Now record your 30s voice bank in Clip 2.";
+        return;
+      }
+
+      if (!isPhraseRecording) {
+        phraseRecognizer = new SpeechRecognition();
+        phraseRecognizer.continuous = false;
+        phraseRecognizer.interimResults = true;
+        phraseRecognizer.lang = 'en-US';
+
+        phraseRecBtn.textContent = "🛑 Listening... Say: 'I am using Vofa AI'";
+        phraseRecBtn.style.background = "#ef4444";
+        isPhraseRecording = true;
+
+        phraseRecognizer.onresult = (e) => {
+          let text = '';
+          for (let i = 0; i < e.results.length; ++i) {
+            text += e.results[i][0].transcript.toLowerCase();
+          }
+
+          if (text.includes('vofa') || text.includes('vofa ai') || text.includes('using vofa') || text.includes('i am using')) {
+            phraseVerified = true;
+            checkPhrase.className = "passed";
+            checkPhrase.textContent = "✅ Verified! Recognized: 'I am using Vofa AI'";
+            phraseRecognizer.stop();
+          }
+        };
+
+        phraseRecognizer.onerror = (e) => {
+          phraseRecBtn.textContent = "🎙️ Retry Phrase";
+          phraseRecBtn.style.background = "#1c2233";
+          isPhraseRecording = false;
+        };
+
+        phraseRecognizer.onend = () => {
+          isPhraseRecording = false;
+          if (phraseVerified) {
+            phraseRecBtn.textContent = "✅ Phrase Verified";
+            phraseRecBtn.style.background = "#15803d";
+            phraseRecBtn.disabled = true;
+            voiceRecBtn.disabled = false;
+            voiceRecBtn.textContent = "🎙️️ Start Voice Training";
+            voiceStatus.textContent = "Clip 1 passed! Now record your 30s voice bank in Clip 2.";
+          } else {
+            phraseRecBtn.textContent = "🎙️ Retry Phrase";
+            phraseRecBtn.style.background = "#1c2233";
+            checkPhrase.textContent = "❌ Phrase not heard clearly. Tap retry and say 'I am using Vofa AI'";
+          }
+        };
+
+        phraseRecognizer.start();
+      } else {
+        phraseRecognizer.stop();
+      }
+    }
+
+    // CLIP 2: NATIVE HARDWARE ACOUSTIC ENERGY TRACKER
     async function toggleVoiceRecording() {
       if (!isMicRecording) {
         try {
@@ -649,7 +732,6 @@
             audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
           });
 
-          // Connect directly to Web Audio real-time energy analyser
           const source = audioContext.createMediaStreamSource(micStream);
           analyserNode = audioContext.createAnalyser();
           analyserNode.fftSize = 512;
@@ -688,7 +770,6 @@
           voiceRecBtn.style.background = "#ef4444";
           voiceStatus.textContent = "Recording! Read out loud to increment the syllable counter in real time.";
 
-          // Track physical sound pressure spikes (syllables)
           const buffer = new Uint8Array(analyserNode.frequencyBinCount);
           function trackAcousticPeaks() {
             if (!isMicRecording) return;
@@ -713,7 +794,6 @@
           }
           trackAcousticPeaks();
 
-          // Duration timer
           recTimerInterval = setInterval(() => {
             recSeconds++;
             const m = String(Math.floor(recSeconds / 60)).padStart(2, '0');
@@ -736,7 +816,7 @@
       } else {
         micMediaRecorder.stop();
         isMicRecording = false;
-        voiceRecBtn.textContent = "🎙️ Retrain Voice Model";
+        voiceRecBtn.textContent = "🎙️ Retrain Voice Bank";
         voiceRecBtn.style.background = "#1c2233";
       }
     }
@@ -747,7 +827,6 @@
       const len = channelData.length;
       const sampleRate = buffer.sampleRate;
 
-      // 1. Noise floor measurement
       const noiseWindow = Math.min(len, Math.floor(sampleRate * 0.3));
       let noiseEnergy = 0;
       for (let i = 0; i < noiseWindow; i++) {
@@ -755,7 +834,6 @@
       }
       const noiseThreshold = (noiseEnergy / noiseWindow) * 2.2;
 
-      // 2. Active speech extraction
       const segments = [];
       let inSpeech = false;
       let segStart = 0;
@@ -783,7 +861,8 @@
       const totalSpeechSeconds = segments.reduce((acc, s) => acc + ((s.end - s.start) / sampleRate), 0);
 
       const failedChecks = [];
-      if (recSeconds < 30) failedChecks.push("need at least 30s recording");
+      if (!phraseVerified) failedChecks.push("must verify Clip 1 phrase first");
+      if (recSeconds < 30) failedChecks.push("need at least 30s recording in Clip 2");
       if (voicePeakCount < 20) failedChecks.push("speak more words from the prompt");
       if (totalSpeechSeconds < 5 || segments.length < 12) failedChecks.push("too much silence or background noise");
 
@@ -807,7 +886,7 @@
     }
 
     function checkReadyToGenerate() {
-      if (stage === 4 && extractedPhonemeBank.segments && extractedPhonemeBank.segments.length > 0) {
+      if (stage === 4 && phraseVerified && extractedPhonemeBank.segments && extractedPhonemeBank.segments.length > 0) {
         genBtn.disabled = false;
         genBtn.textContent = "Generate Video (Using Your Real Voice)";
         statusMsg.textContent = "Face and verified real voice ready to synthesize!";
