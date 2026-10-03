@@ -292,12 +292,12 @@
       </div>
     </div>
 
-    <!-- Acoustic Voice Calibration & Sentence Verification -->
+    <!-- Acoustic Voice Calibration & Peak Analyzer -->
     <div class="panel">
-      <h2>Step 2: Real Voice Training & Verification</h2>
+      <h2>Step 2: Real Voice Training & Noise Filter</h2>
       <div class="audio-card">
         <p style="font-size: 0.8rem; color: var(--muted);">
-          Record in a quiet room if possible. <b>1-2 minutes is ideal</b> (minimum 30 seconds required).
+          Record in a quiet room if possible (auto noise-gate enabled). <b>1-2 minutes is ideal</b> (minimum 30 seconds required).
         </p>
 
         <div class="prompt-box">
@@ -308,9 +308,8 @@
         </div>
 
         <div class="checklist">
-          <span id="checkPhrase">❌ Spoke "I am using Vofa AI"</span>
-          <span id="checkTime">❌ Spoke for at least 30 seconds</span>
-          <span id="checkWords">❌ Read enough sentences (0 / 25 words detected)</span>
+          <span id="checkTime">❌ Spoke for at least 30 seconds (0s / 30s)</span>
+          <span id="checkWords">❌ Read enough speech (0 / 25 syllables detected)</span>
         </div>
 
         <div class="timer" id="recTimer">00:00</div>
@@ -352,7 +351,7 @@
     let currentDrawingPath = [];
     let isDrawing = false;
 
-    // Audio & verification state
+    // Real-time acoustic energy analyzer state
     let micMediaRecorder = null;
     let micChunks = [];
     let isMicRecording = false;
@@ -360,9 +359,10 @@
     let recSeconds = 0;
     let extractedPhonemeBank = {};
 
-    let speechRecognizer = null;
-    let verifiedPhraseSpoken = false;
-    let totalWordsSpoken = 0;
+    let audioContext = null;
+    let analyserNode = null;
+    let voicePeakCount = 0;
+    let lastPeakTime = 0;
 
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
@@ -382,7 +382,6 @@
     const voiceRecBtn = document.getElementById('voiceRecBtn');
     const recTimer = document.getElementById('recTimer');
     const voiceStatus = document.getElementById('voiceStatus');
-    const checkPhrase = document.getElementById('checkPhrase');
     const checkTime = document.getElementById('checkTime');
     const checkWords = document.getElementById('checkWords');
 
@@ -518,7 +517,7 @@
         } else if (stage === 2) {
           openImg = captured;
           stage = 3;
-          stepBanner.textContent = "✏️️ Step 2: Draw a loop around ONLY the opening (teeth/tongue inside)!";
+          stepBanner.textContent = "✏️ Step 2: Draw a loop around ONLY the opening (teeth/tongue inside)!";
           snapBtn.disabled = true;
         }
       };
@@ -638,99 +637,83 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    // SPEECH RECOGNITION & STRICT VOICE RECORDING VALIDATOR
+    // NATIVE HARDWARE ACOUSTIC ENERGY TRACKER (NO SPEECH-REC MIC BUGS)
     async function toggleVoiceRecording() {
       if (!isMicRecording) {
         try {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          audioContext = new AudioContext();
+          if (audioContext.state === 'suspended') await audioContext.resume();
+
           const micStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true
-            }
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
           });
 
-          micChunks = [];
-          verifiedPhraseSpoken = false;
-          totalWordsSpoken = 0;
-          recSeconds = 0;
+          // Connect directly to Web Audio real-time energy analyser
+          const source = audioContext.createMediaStreamSource(micStream);
+          analyserNode = audioContext.createAnalyser();
+          analyserNode.fftSize = 512;
+          source.connect(analyserNode);
 
-          checkPhrase.className = "";
-          checkPhrase.textContent = "❌ Spoke \"I am using Vofa AI\"";
+          micChunks = [];
+          recSeconds = 0;
+          voicePeakCount = 0;
+
           checkTime.className = "";
-          checkTime.textContent = "❌ Spoke for at least 30 seconds";
+          checkTime.textContent = "❌ Spoke for at least 30 seconds (0s / 30s)";
           checkWords.className = "";
-          checkWords.textContent = "❌ Read enough sentences (0 / 25 words detected)";
+          checkWords.textContent = "❌ Read enough speech (0 / 25 syllables detected)";
 
           micMediaRecorder = new MediaRecorder(micStream);
           micMediaRecorder.ondataavailable = e => {
             if (e.data.size > 0) micChunks.push(e.data);
           };
 
-          // Setup real-time speech verification
-          const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-          if (SpeechRecognition) {
-            speechRecognizer = new SpeechRecognition();
-            speechRecognizer.continuous = true;
-            speechRecognizer.interimResults = true;
-            speechRecognizer.lang = 'en-US';
-
-            speechRecognizer.onresult = (event) => {
-              let fullTranscript = '';
-              for (let i = 0; i < event.results.length; ++i) {
-                fullTranscript += event.results[i][0].transcript.toLowerCase() + ' ';
-              }
-
-              // 1. Mandatory phrase check
-              if (
-                fullTranscript.includes('vofa') || 
-                fullTranscript.includes('using vofa') || 
-                fullTranscript.includes('i am using') ||
-                fullTranscript.includes('vofa ai')
-              ) {
-                verifiedPhraseSpoken = true;
-                checkPhrase.className = "passed";
-                checkPhrase.textContent = "✅ Verified phrase detected (\"I am using Vofa AI\")";
-              }
-
-              // 2. Word count verification
-              const words = fullTranscript.trim().split(/\s+/).filter(Boolean);
-              totalWordsSpoken = words.length;
-              checkWords.textContent = `${totalWordsSpoken >= 25 ? '✅' : '❌'} Read enough sentences (${totalWordsSpoken} / 25 words detected)`;
-              if (totalWordsSpoken >= 25) {
-                checkWords.className = "passed";
-              }
-            };
-
-            speechRecognizer.onerror = (e) => console.log('SpeechRec error:', e);
-            speechRecognizer.start();
-          }
-
           micMediaRecorder.onstop = async () => {
             micStream.getTracks().forEach(t => t.stop());
             clearInterval(recTimerInterval);
-            if (speechRecognizer) {
-              speechRecognizer.stop();
-            }
 
-            voiceStatus.textContent = "Validating speech contents & processing audio...";
+            voiceStatus.textContent = "Processing audio, removing noise & slicing phonemes...";
             const rawBlob = new Blob(micChunks, { type: 'audio/webm' });
             const arrayBuf = await rawBlob.arrayBuffer();
-
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            const audioCtx = new AudioContext();
-            const decoded = await audioCtx.decodeAudioData(arrayBuf);
+            const decoded = await audioContext.decodeAudioData(arrayBuf);
 
             cleanAndSliceAudio(decoded);
-            audioCtx.close();
+            audioContext.close();
           };
 
           micMediaRecorder.start();
           isMicRecording = true;
-          voiceRecBtn.textContent = "🛑 Stop & Verify Voice Recording";
+          voiceRecBtn.textContent = "🛑 Stop & Process Recording";
           voiceRecBtn.style.background = "#ef4444";
-          voiceStatus.textContent = "Listening... Make sure to say the calibration sentence & read the text!";
+          voiceStatus.textContent = "Recording! Read out loud to increment the syllable counter in real time.";
 
+          // Track physical sound pressure spikes (syllables)
+          const buffer = new Uint8Array(analyserNode.frequencyBinCount);
+          function trackAcousticPeaks() {
+            if (!isMicRecording) return;
+            analyserNode.getByteFrequencyData(buffer);
+
+            let sum = 0;
+            for (let i = 0; i < buffer.length; i++) sum += buffer[i];
+            let average = sum / buffer.length;
+
+            const now = performance.now();
+            if (average > 25 && now - lastPeakTime > 170) {
+              lastPeakTime = now;
+              voicePeakCount++;
+
+              checkWords.textContent = `${voicePeakCount >= 25 ? '✅' : '❌'} Read enough speech (${voicePeakCount} / 25 syllables detected)`;
+              if (voicePeakCount >= 25) {
+                checkWords.className = "passed";
+              }
+            }
+
+            requestAnimationFrame(trackAcousticPeaks);
+          }
+          trackAcousticPeaks();
+
+          // Duration timer
           recTimerInterval = setInterval(() => {
             recSeconds++;
             const m = String(Math.floor(recSeconds / 60)).padStart(2, '0');
@@ -744,9 +727,7 @@
               checkTime.textContent = `❌ Spoke for at least 30 seconds (${30 - recSeconds}s remaining)`;
             }
 
-            if (recSeconds >= 300) {
-              toggleVoiceRecording();
-            }
+            if (recSeconds >= 300) toggleVoiceRecording();
           }, 1000);
 
         } catch (e) {
@@ -799,16 +780,12 @@
         }
       }
 
-      // STRICT VALIDATION: Require 30s recording, phrase detected, word count, and speech energy
       const totalSpeechSeconds = segments.reduce((acc, s) => acc + ((s.end - s.start) / sampleRate), 0);
 
       const failedChecks = [];
       if (recSeconds < 30) failedChecks.push("need at least 30s recording");
-      if (window.SpeechRecognition || window.webkitSpeechRecognition) {
-        if (!verifiedPhraseSpoken) failedChecks.push("must say 'I am using Vofa AI'");
-        if (totalWordsSpoken < 20) failedChecks.push("read more words from the paragraph");
-      }
-      if (totalSpeechSeconds < 6 || segments.length < 15) failedChecks.push("too much silence or background noise");
+      if (voicePeakCount < 20) failedChecks.push("speak more words from the prompt");
+      if (totalSpeechSeconds < 5 || segments.length < 12) failedChecks.push("too much silence or background noise");
 
       if (failedChecks.length > 0) {
         voiceStatus.textContent = `❌ Rejected: ${failedChecks.join(', ')} 😭. Try recording again!`;
@@ -818,7 +795,6 @@
         return;
       }
 
-      // 3. Accepted: Cache validated phonetic audio bank
       extractedPhonemeBank = {
         buffer: buffer,
         segments: segments,
