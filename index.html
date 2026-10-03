@@ -525,9 +525,9 @@
     const tokenDisplay = document.getElementById('tokenDisplay');
 
     const PHONEMES = {
-      'AA': { open: 1.0, dur: 0.17 },
+      'AA': { open: 1.0, dur: 0.18 },
       'AE': { open: 0.85, dur: 0.16 },
-      'AH': { open: 0.7, dur: 0.14 },
+      'AH': { open: 0.7, dur: 0.15 },
       'AO': { open: 0.75, dur: 0.16 },
       'EH': { open: 0.6, dur: 0.14 },
       'ER': { open: 0.45, dur: 0.15 },
@@ -540,20 +540,20 @@
       'S':  { open: 0.15, dur: 0.12 },
       'SH': { open: 0.2, dur: 0.12 },
       'F':  { open: 0.1, dur: 0.10 },
-      'T':  { open: 0.1, dur: 0.07 },
-      'P':  { open: 0.05, dur: 0.07 },
+      'T':  { open: 0.1, dur: 0.08 },
+      'P':  { open: 0.05, dur: 0.08 },
       'K':  { open: 0.1, dur: 0.08 },
-      'B':  { open: 0.05, dur: 0.07 },
-      'D':  { open: 0.1, dur: 0.07 },
-      'G':  { open: 0.1, dur: 0.07 },
-      'M':  { open: 0.0, dur: 0.10 },
-      'N':  { open: 0.05, dur: 0.10 },
-      'L':  { open: 0.35, dur: 0.11 },
-      'R':  { open: 0.4, dur: 0.12 },
-      'W':  { open: 0.25, dur: 0.11 },
-      'V':  { open: 0.2, dur: 0.10 },
+      'B':  { open: 0.05, dur: 0.08 },
+      'D':  { open: 0.1, dur: 0.08 },
+      'G':  { open: 0.1, dur: 0.08 },
+      'M':  { open: 0.0, dur: 0.11 },
+      'N':  { open: 0.05, dur: 0.11 },
+      'L':  { open: 0.35, dur: 0.12 },
+      'R':  { open: 0.4, dur: 0.13 },
+      'W':  { open: 0.25, dur: 0.12 },
+      'V':  { open: 0.2, dur: 0.11 },
       'Z':  { open: 0.15, dur: 0.11 },
-      'SIL':{ open: 0.0, dur: 0.09 }
+      'SIL':{ open: 0.0, dur: 0.08 }
     };
 
     const WORD_MAP = {
@@ -666,7 +666,7 @@
         } else if (stage === 2) {
           openImg = captured;
           stage = 3;
-          stepBanner.textContent = "✏️ Step 2: Draw a loop around ONLY the opening (teeth/tongue inside)!";
+          stepBanner.textContent = "✏️️ Step 2: Draw a loop around ONLY the opening (teeth/tongue inside)!";
           snapBtn.disabled = true;
         }
       };
@@ -790,12 +790,17 @@
     async function toggleSpeechListener() {
       if (!isListeningSpeech) {
         try {
-          const AudioContext = window.AudioContext || window.webkitAudioContext;
-          clip1AudioContext = new AudioContext();
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          clip1AudioContext = new AudioCtx();
           if (clip1AudioContext.state === 'suspended') await clip1AudioContext.resume();
 
+          // Raw voice input: NO noise cancellation distortion
           const micStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: true
+            }
           });
 
           const source = clip1AudioContext.createMediaStreamSource(micStream);
@@ -904,16 +909,21 @@
       }
     }
 
-    // CLIP 2: FAST-PASSED VOICE TRAINING RECORDING (15s MINIMUM)
+    // CLIP 2: RAW ACOUSTIC CAPTURE (NO NOISE CANCELLATION DISTORTION)
     async function toggleVoiceRecording() {
       if (!isMicRecording) {
         try {
-          const AudioContext = window.AudioContext || window.webkitAudioContext;
-          audioContext = new AudioContext();
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          audioContext = new AudioCtx();
           if (audioContext.state === 'suspended') await audioContext.resume();
 
+          // echoCancellation: false preserves your full warm bass voice
           const micStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: true
+            }
           });
 
           const source = audioContext.createMediaStreamSource(micStream);
@@ -941,7 +951,7 @@
             clearInterval(recTimerInterval);
             bankVuBar.style.width = '0%';
 
-            voiceStatus.textContent = "Processing audio, removing noise & slicing phonemes...";
+            voiceStatus.textContent = "Processing full-spectrum audio & extracting formant slices...";
             const rawBlob = new Blob(micChunks, { type: 'audio/webm' });
             const arrayBuf = await rawBlob.arrayBuffer();
             const decoded = await audioContext.decodeAudioData(arrayBuf);
@@ -1010,18 +1020,19 @@
       }
     }
 
-    // 15-SECOND VALIDATION GATE
+    // NATURAL WARMTH SLICING ENGINE (NO SQUEAKY ARTIFACTS)
     function cleanAndSliceAudio(buffer) {
       const channelData = buffer.getChannelData(0);
       const len = channelData.length;
       const sampleRate = buffer.sampleRate;
 
+      // Gentle floor to preserve deep fundamentals
       const noiseWindow = Math.min(len, Math.floor(sampleRate * 0.3));
       let noiseEnergy = 0;
       for (let i = 0; i < noiseWindow; i++) {
         noiseEnergy += Math.abs(channelData[i]);
       }
-      const noiseThreshold = (noiseEnergy / noiseWindow) * 2.2;
+      const noiseThreshold = Math.max(0.015, (noiseEnergy / noiseWindow) * 1.5);
 
       const segments = [];
       let inSpeech = false;
@@ -1038,10 +1049,11 @@
 
         if (frameEnergy > noiseThreshold && !inSpeech) {
           inSpeech = true;
-          segStart = i;
+          segStart = Math.max(0, i - Math.floor(sampleRate * 0.03));
         } else if (frameEnergy <= noiseThreshold && inSpeech) {
           inSpeech = false;
-          if (i - segStart > sampleRate * 0.08) {
+          // Slices must be at least 140ms long so they sound natural instead of micro-clicks
+          if (i - segStart > sampleRate * 0.14) {
             segments.push({ start: segStart, end: i });
           }
         }
@@ -1053,7 +1065,7 @@
       if (!phraseVerified) failedChecks.push("must verify Clip 1 challenge first");
       if (recSeconds < 15) failedChecks.push("need at least 15s recording in Clip 2");
       if (voicePeakCount < 20) failedChecks.push("speak more words from the prompt");
-      if (totalSpeechSeconds < 4 || segments.length < 10) failedChecks.push("too much silence or background noise");
+      if (totalSpeechSeconds < 3 || segments.length < 8) failedChecks.push("too much silence or mic muted");
 
       if (failedChecks.length > 0) {
         voiceStatus.textContent = `❌ Rejected: ${failedChecks.join(', ')} 😭. Try recording again!`;
@@ -1070,7 +1082,7 @@
       };
 
       voiceStatus.style.color = "#4ade80";
-      voiceStatus.textContent = `✅ Voice model verified! Extracted ${segments.length} speech slices with active noise filter.`;
+      voiceStatus.textContent = `✅ Voice model verified! Extracted ${segments.length} natural voice slices.`;
       checkReadyToGenerate();
     }
 
@@ -1078,10 +1090,11 @@
       if (stage === 4 && phraseVerified && extractedPhonemeBank.segments && extractedPhonemeBank.segments.length > 0) {
         genBtn.disabled = false;
         genBtn.textContent = "Generate Video (Using Your Real Voice)";
-        statusMsg.textContent = "Face and verified real voice ready to synthesize!";
+        statusMsg.textContent = "Face and natural warm voice ready to synthesize!";
       }
     }
 
+    // SYNTHESIS ENGINE WITH MATCHED SAMPLE-RATE (FIXES CHIPMUNK EFFECT)
     async function executeSynthesis() {
       const text = scriptInput.value.trim();
       if (!text || stage !== 4 || !extractedPhonemeBank.segments) return;
@@ -1095,8 +1108,10 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
 
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      const audioCtx = new AudioContext();
+      const bankSampleRate = extractedPhonemeBank.sampleRate || 48000;
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      // Matching sampleRate prevents high pitch shift
+      const audioCtx = new AudioCtx({ sampleRate: bankSampleRate });
       if (audioCtx.state === 'suspended') {
         await audioCtx.resume();
       }
@@ -1126,7 +1141,7 @@
         outVideo.src = URL.createObjectURL(blob);
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
-        statusMsg.textContent = "Video generated with your actual authentic voice!";
+        statusMsg.textContent = "Video generated with your actual natural pitch!";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
@@ -1163,9 +1178,10 @@
 
         if (ph !== 'SIL') {
           const seg = segs[index % segs.length];
-          const sliceLen = seg.end - seg.start;
+          // Use natural duration of slice
+          const sliceLen = Math.min(seg.end - seg.start, Math.floor(bankSampleRate * Math.max(dur, 0.16)));
 
-          const snippetBuffer = audioCtx.createBuffer(1, sliceLen, audioCtx.sampleRate);
+          const snippetBuffer = audioCtx.createBuffer(1, sliceLen, bankSampleRate);
           const snippetData = snippetBuffer.getChannelData(0);
           const origChannel = origBuffer.getChannelData(0);
 
@@ -1176,10 +1192,11 @@
           const srcNode = audioCtx.createBufferSource();
           srcNode.buffer = snippetBuffer;
 
+          // Natural smooth crossfade envelope
           const gainNode = audioCtx.createGain();
           const now = audioCtx.currentTime;
           gainNode.gain.setValueAtTime(0.001, now);
-          gainNode.gain.linearRampToValueAtTime(0.9, now + 0.02);
+          gainNode.gain.linearRampToValueAtTime(0.95, now + 0.03);
           gainNode.gain.linearRampToValueAtTime(0.001, now + dur);
 
           srcNode.connect(gainNode);
@@ -1187,7 +1204,7 @@
           gainNode.connect(audioCtx.destination);
 
           srcNode.start(now);
-          srcNode.stop(now + dur);
+          srcNode.stop(now + dur + 0.02);
 
           targetVowelOpen = pData.open;
         } else {
@@ -1207,7 +1224,6 @@
         currentVowelOpen += (targetVowelOpen - currentVowelOpen) * 0.38;
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
         ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
 
         if (currentVowelOpen > 0.05) {
