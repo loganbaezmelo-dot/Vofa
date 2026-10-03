@@ -185,7 +185,6 @@
       text-align: center;
     }
 
-    /* Live Token Numbers Display */
     .token-display {
       font-size: 1.8rem;
       font-weight: 900;
@@ -397,7 +396,7 @@
         </div>
 
         <div class="speech-bar">
-          <input type="text" id="liveTranscript" readonly placeholder="Tap the mic, read the numbers, tap stop..." />
+          <input type="text" id="liveTranscript" readonly placeholder="Tap mic, speak numbers, tap stop..." />
           <button class="mic-icon-btn" id="micIconBtn" onclick="toggleSpeechListener()" title="Click to record">🎙️</button>
         </div>
 
@@ -489,6 +488,7 @@
     let phraseChunks = [];
     let savedPhraseBlob = null;
     let phraseVerified = false;
+    let actualSpokenWords = "";
 
     const webcam = document.getElementById('webcam');
     const canvas = document.getElementById('renderCanvas');
@@ -594,7 +594,6 @@
       return queue;
     }
 
-    // Generate fresh random 4-digit code
     function generateNewLivenessChallenge() {
       targetDigits = String(Math.floor(1000 + Math.random() * 9000));
       tokenDisplay.textContent = targetDigits.split('').join('  ');
@@ -778,7 +777,6 @@
       return { x: sx / pts.length, y: sy / pts.length };
     }
 
-    // Number word dictionary for digit transcription
     const NUM_WORDS = {
       '0': ['zero', 'oh', '0'],
       '1': ['one', 'won', '1'],
@@ -793,6 +791,7 @@
     };
 
     function evaluateDigitMatch(rawTranscript) {
+      if (!rawTranscript) return false;
       const lower = rawTranscript.toLowerCase();
       let matchedCount = 0;
 
@@ -805,7 +804,7 @@
       return matchedCount >= 3;
     }
 
-    // CLIP 1: LIVE SPEECH RECOGNITION FOR DIGITS (NO PLAYBACK DELAY)
+    // CLIP 1: DECOUPLED TRACKER (PREVENTS PROMPT TEXT LEAK)
     async function toggleSpeechListener() {
       if (!isListeningSpeech) {
         const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -816,6 +815,9 @@
           });
 
           phraseChunks = [];
+          actualSpokenWords = "";
+          phraseVerified = false;
+
           phraseMediaRecorder = new MediaRecorder(phraseStream);
           phraseMediaRecorder.ondataavailable = e => {
             if (e.data.size > 0) phraseChunks.push(e.data);
@@ -832,7 +834,8 @@
 
           isListeningSpeech = true;
           micIconBtn.classList.add('listening');
-          liveTranscript.value = "Listening... say: " + targetDigits.split('').join(' ');
+          liveTranscript.value = "";
+          liveTranscript.placeholder = "Listening... say: " + targetDigits.split('').join(' ');
           heardDisplay.innerHTML = `Live digits heard: <b>(speak numbers now...)</b>`;
           checkPhrase.className = "";
           checkPhrase.textContent = `🎙️ Say numbers: ${targetDigits.split('').join(' - ')}`;
@@ -848,11 +851,11 @@
               for (let i = 0; i < e.results.length; i++) {
                 text += e.results[i][0].transcript + ' ';
               }
-              text = text.trim();
-              liveTranscript.value = text;
-              heardDisplay.innerHTML = `Live digits heard: <b style="color:#38bdf8;">"${text}"</b>`;
+              actualSpokenWords = text.trim();
+              liveTranscript.value = actualSpokenWords;
+              heardDisplay.innerHTML = `Live digits heard: <b style="color:#38bdf8;">"${actualSpokenWords}"</b>`;
 
-              if (evaluateDigitMatch(text)) {
+              if (evaluateDigitMatch(actualSpokenWords)) {
                 phraseVerified = true;
                 checkPhrase.className = "passed";
                 checkPhrase.textContent = `✅ Live Human Verified! Matched digits [${targetDigits}]`;
@@ -890,8 +893,7 @@
       }
 
       setTimeout(() => {
-        const heard = (liveTranscript.value || '').toLowerCase();
-        if (phraseVerified || evaluateDigitMatch(heard) || (phraseChunks.length > 0 && heard.length > 1)) {
+        if (phraseVerified || evaluateDigitMatch(actualSpokenWords)) {
           phraseVerified = true;
           checkPhrase.className = "passed";
           checkPhrase.textContent = `✅ Live Human Verified! Matched random challenge [${targetDigits}]`;
@@ -903,7 +905,8 @@
           voiceStatus.textContent = "Anti-spoofing challenge passed! Clip 2 unlocked.";
           checkReadyToGenerate();
         } else {
-          checkPhrase.textContent = `❌ Did not catch numbers. Tap mic and say: ${targetDigits.split('').join(' - ')}`;
+          checkPhrase.className = "";
+          checkPhrase.textContent = `❌ Verification failed. Heard: "${actualSpokenWords || 'nothing'}". Say: ${targetDigits.split('').join(' - ')}`;
         }
       }, 350);
     }
