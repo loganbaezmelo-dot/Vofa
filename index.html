@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Vofa AI | Silhouette-Clipped Head Rig</title>
+  <title>Vofa AI | Solid Morphing Jaw Engine</title>
 
   <!-- Lightweight MediaPipe Face Mesh Engine -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -310,12 +310,12 @@
 
   <header>
     <div class="brand">VOFA <span>AI</span></div>
-    <div class="badge">Face Silhouette Clamped</div>
+    <div class="badge">Solid Morph Rig</div>
   </header>
 
   <div class="hero">
     <h1>You don't need AI for AI-generated videos!</h1>
-    <p>Lips are automatically masked to your face silhouette so they never float outside your head.</p>
+    <p>Solid anatomical mouth morphing on full-screen head turns without transparency ghosting.</p>
   </div>
 
   <main>
@@ -357,7 +357,7 @@
 
       <div class="audio-card">
         <div class="row">
-          <button id="voiceRecBtn" onclick="toggleVoiceRecording()">🎙️️ Record Master Voice (Optional)</button>
+          <button id="voiceRecBtn" onclick="toggleVoiceRecording()">🎙️ Record Master Voice (Optional)</button>
           <button onclick="clearAudioData()" style="color: #f87171; flex: 0 0 110px;">Clear Audio</button>
         </div>
 
@@ -397,7 +397,7 @@
     <div class="panel">
       <h2>Step 3: Script & Render</h2>
       <p style="font-size: 0.8rem; color: var(--muted);">
-        Type your script below. The engine clips mouth pixels strictly inside your face boundary on side turns.
+        Type your script below. The engine dynamically morphs the mouth slit cleanly without fading or disappearing!
       </p>
       <textarea id="scriptInput">hello welcome to vofa ai this mouth stays glued to my face while my head turns</textarea>
 
@@ -1008,7 +1008,7 @@
       }
     }
 
-    // SYNTHESIS & FULL-SCREEN RENDERING PIPELINE WITH FACE SILHOUETTE CLIPPING
+    // SYNTHESIS & FULL-SCREEN RENDERING PIPELINE WITH SOLID MORPHING JAW
     async function executeSynthesis() {
       const scriptText = scriptInput.value.trim();
       if (!scriptText || stage !== 5 || !headVideoBlob) return;
@@ -1061,7 +1061,7 @@
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
         statusMsg.textContent = hasAudio 
-          ? "Video generated with full-screen head turns & synced voiceover!" 
+          ? "Video generated with solid morphing mouth & synced voiceover!" 
           : "Silent video generated! Import into your editor for voiceover.";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
@@ -1143,9 +1143,9 @@
 
       playNextWord(0);
 
-      // FULL-SCREEN RENDER LOOP WITH AUTOMATIC FACE SILHOUETTE CLIPPING
+      // FULL-SCREEN RENDER LOOP WITH SOLID PHYSICAL JAW MORPH
       async function renderLoop() {
-        if (!isRendering && currentVowelOpen < 0.03) return;
+        if (!isRendering && currentVowelOpen < 0.02) return;
 
         currentVowelOpen += (targetVowelOpen - currentVowelOpen) * 0.35;
 
@@ -1189,11 +1189,11 @@
           perspectiveScaleX = Math.min(1.0, Math.max(0.3, currentWidth / baseLipWidth));
         }
 
-        // 3. Composite mouth STRICTLY CLIPPED to the face silhouette
-        if (currentVowelOpen > 0.04 && mouthPatchCanvas && latestLandmarks) {
+        // 3. Composite mouth with 100% solid opacity and physical vertical scale morph
+        if (currentVowelOpen > 0.02 && mouthPatchCanvas && latestLandmarks) {
           ctx.save();
 
-          // CLIP MASK: Construct polygon around user's face silhouette boundary
+          // CLIP MASK: Face silhouette prevents floating outside head boundary
           ctx.beginPath();
           FACE_OVAL_INDICES.forEach((idx, i) => {
             const pt = latestLandmarks[idx];
@@ -1203,18 +1203,25 @@
             else ctx.lineTo(px, py);
           });
           ctx.closePath();
-          // Any mouth pixels poking outside this silhouette polygon are instantly cut off!
           ctx.clip();
 
-          // Draw the mouth patch inside the face silhouette
           ctx.translate(trackedAnchorX, trackedAnchorY);
           ctx.rotate(headTiltAngle);
 
-          const naturalVScale = Math.min(0.85, 0.3 + currentVowelOpen * 0.45);
-          ctx.scale(perspectiveScaleX, naturalVScale);
+          // Physical vertical jaw morph (no fading ghost alpha)
+          const verticalScale = currentVowelOpen * 0.85;
+          ctx.scale(perspectiveScaleX, verticalScale);
 
-          ctx.globalAlpha = Math.min(1.0, currentVowelOpen * 1.8);
+          // 100% SOLID: Eliminates transparency blurring & double lips
+          ctx.globalAlpha = 1.0;
 
+          // Dark backing hides base closed lips underneath
+          ctx.fillStyle = '#0a0305';
+          ctx.beginPath();
+          ctx.ellipse(0, 0, (patchBoundingBox.width * 0.45), patchBoundingBox.height * 0.45, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Draw crisp mouth cutout
           ctx.drawImage(
             mouthPatchCanvas,
             -patchRelCenterX,
