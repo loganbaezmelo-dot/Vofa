@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Vofa AI | Auto-Mouth Gizmo Engine</title>
+  <title>Vofa AI | Multi-Avatar Head-Turn Engine</title>
 
   <!-- Lightweight MediaPipe Face Mesh Engine -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -113,6 +113,35 @@
     .panel h2 {
       font-size: 1rem;
       font-weight: 700;
+    }
+
+    .avatar-tabs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+
+    .avatar-tab-btn {
+      padding: 8px 4px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      background: #0d111d;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 6px;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .avatar-tab-btn.active {
+      background: #1e1b4b;
+      border-color: #8b5cf6;
+      color: #fff;
+    }
+
+    .avatar-tab-btn.ready {
+      border-color: #22c55e;
+      color: #4ade80;
     }
 
     .step-banner {
@@ -312,6 +341,16 @@
       cursor: not-allowed;
     }
 
+    input[type="text"].name-input {
+      background: #090b11;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: #fff;
+      padding: 8px 12px;
+      font-size: 0.85rem;
+      width: 100%;
+    }
+
     textarea {
       width: 100%;
       height: 80px;
@@ -334,16 +373,36 @@
 
   <header>
     <div class="brand">VOFA <span>AI</span></div>
-    <div class="badge">Auto-Mouth Gizmo</div>
+    <div class="badge">Multi-Avatar Head-Turn Studio</div>
   </header>
 
   <div class="hero">
     <h1>You don't need AI for AI-generated videos!</h1>
-    <p>No more drawing! Drag and scale a perfect mouth guide right over your lips.</p>
+    <p>Build and name up to 4 custom avatars. Tightened mouth gizmo with clean rest clamping!</p>
   </div>
 
   <main>
-    <!-- Step 1: Face Capture & Gizmo Setup -->
+    <!-- Avatar Switcher Panel -->
+    <div class="panel">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>Select / Configure Avatar</h2>
+        <span style="font-size: 0.75rem; color: var(--muted);">Slots: 4 max</span>
+      </div>
+
+      <div class="avatar-tabs">
+        <button class="avatar-tab-btn active" id="tab0" onclick="switchAvatarSlot(0)">1. Avatar A</button>
+        <button class="avatar-tab-btn" id="tab1" onclick="switchAvatarSlot(1)">2. Avatar B</button>
+        <button class="avatar-tab-btn" id="tab2" onclick="switchAvatarSlot(2)">3. Avatar C</button>
+        <button class="avatar-tab-btn" id="tab3" onclick="switchAvatarSlot(3)">4. Avatar D</button>
+      </div>
+
+      <div class="row">
+        <input type="text" class="name-input" id="avatarNameInput" placeholder="Name this avatar (e.g. Me, Mom)..." oninput="renameCurrentAvatar()">
+        <button onclick="resetCurrentAvatar()" style="flex: 0 0 110px; color: #f87171;">Reset Slot</button>
+      </div>
+    </div>
+
+    <!-- Step 1: Face Capture & Head Turn Video Rig -->
     <div class="panel">
       <h2>Step 1: Face Capture & Position Gizmo</h2>
       <div class="step-banner" id="stepBanner">
@@ -365,7 +424,7 @@
       <!-- Auto Gizmo Positioning Controls -->
       <div class="gizmo-controls" id="gizmoBox" style="display: none;">
         <div style="font-size: 0.85rem; font-weight: 700; color: #ec4899;">
-          🎯 Drag on the canvas to move mouth, or use sliders to scale:
+          🎯 Drag canvas to center on mouth. Keep Height TIGHT (only dark opening/teeth)!
         </div>
         <div class="slider-row">
           <span>Width</span>
@@ -373,7 +432,7 @@
         </div>
         <div class="slider-row">
           <span>Height</span>
-          <input type="range" id="gizmoHeight" min="15" max="140" value="45" oninput="updateGizmoFromSliders()">
+          <input type="range" id="gizmoHeight" min="10" max="110" value="32" oninput="updateGizmoFromSliders()">
         </div>
         <button id="confirmGizmoBtn" onclick="confirmGizmoStep()" style="color: #38bdf8; font-weight: 700; background: #1e1b4b; border-color: #4338ca;">
           Lock In Mouth Shape & Continue
@@ -426,7 +485,7 @@
           <div class="word-list-box" id="wordListBox" style="display: none;"></div>
         </div>
 
-        <p id="voiceStatus" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Audio is optional — Step 1 head setup is all you need!</p>
+        <p id="voiceStatus" style="font-size: 0.8rem; color: var(--muted); text-align: center;">Audio is optional — Step 1 avatar setup is all you need!</p>
       </div>
     </div>
 
@@ -434,12 +493,12 @@
     <div class="panel">
       <h2>Step 3: Script & Render</h2>
       <p style="font-size: 0.8rem; color: var(--muted);">
-        Type your script below. The engine uses your clean geometric mouth guide with dynamic head tracking!
+        Type your script below. The engine renders whichever avatar is currently active!
       </p>
-      <textarea id="scriptInput">hello welcome to vofa ai this mouth was placed with the auto gizmo and stays glued to my face</textarea>
+      <textarea id="scriptInput">hello welcome to vofa ai this mouth stays glued to my face while my head turns</textarea>
 
       <button class="primary" id="genBtn" onclick="executeSynthesis()" disabled>
-        Generate Video (Complete Step 1 Rig First)
+        Generate Video (Complete Step 1 For Active Avatar First)
       </button>
 
       <div class="view-box" style="margin-top: 10px;">
@@ -453,36 +512,41 @@
   </main>
 
   <script>
+    // MULTI-AVATAR SYSTEM (UP TO 4 AVATARS)
+    let currentAvatarIdx = 0;
+    const avatars = [
+      createBlankAvatar("Avatar A"),
+      createBlankAvatar("Avatar B"),
+      createBlankAvatar("Avatar C"),
+      createBlankAvatar("Avatar D")
+    ];
+
+    function createBlankAvatar(defaultName) {
+      return {
+        name: defaultName,
+        stage: 0,
+        closedImg: null,
+        openImg: null,
+        headVideoBlob: null,
+        headVideoUrl: null,
+        gizmo: { x: 0, y: 0, w: 130, h: 32 },
+        closedGizmoState: null,
+        openGizmoState: null,
+        mouthPatchCanvas: null,
+        patchBoundingBox: { x: 0, y: 0, width: 0, height: 0 },
+        baseLipCenter: { x: 0, y: 0 },
+        baseLipWidth: 100
+      };
+    }
+
     let stream = null;
-    let stage = 0;
-
-    // Photos
-    let closedImg = null;
-    let openImg = null;
-
-    // Auto Gizmo Transformation State (Smooth Bezier Oval)
-    let gizmo = {
-      x: 0,
-      y: 0,
-      w: 130,
-      h: 45
-    };
-    let closedGizmoState = null;
-    let openGizmoState = null;
     let isDraggingGizmo = false;
     let dragOffset = { x: 0, y: 0 };
 
-    // Head-Turn Video State
+    // Head-Turn Video Recorder
     let headMediaRecorder = null;
     let headVideoChunks = [];
     let isRecordingHeadVid = false;
-    let headVideoBlob = null;
-
-    // Isolated Feathered Mouth Canvas
-    let mouthPatchCanvas = null;
-    let patchBoundingBox = { x: 0, y: 0, width: 0, height: 0 };
-    let baseLipCenter = { x: 0, y: 0 };
-    let baseLipWidth = 100;
 
     // MediaPipe FaceMesh Engine
     let faceMesh = null;
@@ -524,6 +588,7 @@
     const voiceRecBtn = document.getElementById('voiceRecBtn');
     const voiceStatus = document.getElementById('voiceStatus');
     const audioModeBadge = document.getElementById('audioModeBadge');
+    const avatarNameInput = document.getElementById('avatarNameInput');
 
     const cutterContainer = document.getElementById('cutterContainer');
     const masterAudio = document.getElementById('masterAudio');
@@ -549,6 +614,57 @@
       });
     }
     initMediaPipe();
+
+    // AVATAR PROFILE LOGIC
+    function switchAvatarSlot(idx) {
+      currentAvatarIdx = idx;
+      for (let i = 0; i < 4; i++) {
+        const btn = document.getElementById(`tab${i}`);
+        btn.classList.toggle('active', i === idx);
+        btn.classList.toggle('ready', avatars[i].stage === 5);
+      }
+
+      const activeAv = avatars[currentAvatarIdx];
+      avatarNameInput.value = activeAv.name;
+
+      if (activeAv.stage === 5 && activeAv.headVideoUrl) {
+        recordedHeadVideo.src = activeAv.headVideoUrl;
+        recordedHeadVideo.style.display = 'block';
+        recordedHeadVideo.play();
+        webcam.style.display = 'none';
+        canvas.style.display = 'none';
+        camPlaceholder.style.display = 'none';
+        stepBanner.textContent = `✅ ${activeAv.name} is ready to render!`;
+        snapBtn.disabled = true;
+        snapBtn.textContent = "Avatar Ready";
+      } else {
+        recordedHeadVideo.style.display = 'none';
+        recordedHeadVideo.pause();
+        gizmoBox.style.display = 'none';
+        canvas.style.display = 'none';
+        camPlaceholder.style.display = 'block';
+        stepBanner.textContent = `1. Open camera & take snapshot facing forward with mouth CLOSED for ${activeAv.name}.`;
+        snapBtn.textContent = "Snapshot Closed Face";
+        snapBtn.disabled = !stream;
+      }
+
+      checkReadyToGenerate();
+    }
+
+    function renameCurrentAvatar() {
+      const newName = avatarNameInput.value.trim() || `Avatar ${String.fromCharCode(65 + currentAvatarIdx)}`;
+      avatars[currentAvatarIdx].name = newName;
+      document.getElementById(`tab${currentAvatarIdx}`).textContent = `${currentAvatarIdx + 1}. ${newName}`;
+      checkReadyToGenerate();
+    }
+
+    function resetCurrentAvatar() {
+      if (confirm(`Reset ${avatars[currentAvatarIdx].name}?`)) {
+        avatars[currentAvatarIdx] = createBlankAvatar(`Avatar ${String.fromCharCode(65 + currentAvatarIdx)}`);
+        document.getElementById(`tab${currentAvatarIdx}`).classList.remove('ready');
+        switchAvatarSlot(currentAvatarIdx);
+      }
+    }
 
     async function toggleCamera() {
       if (!stream) {
@@ -578,7 +694,7 @@
         stream = null;
       }
       webcam.srcObject = null;
-      if (canvas.style.display !== 'block') {
+      if (canvas.style.display !== 'block' && recordedHeadVideo.style.display !== 'block') {
         camPlaceholder.style.display = 'block';
       } else {
         camPlaceholder.style.display = 'none';
@@ -588,7 +704,9 @@
     }
 
     function handleSnapshot() {
-      if (stage === 4) {
+      const activeAv = avatars[currentAvatarIdx];
+
+      if (activeAv.stage === 4) {
         toggleHeadVideoRecording();
         return;
       }
@@ -609,25 +727,25 @@
         gizmoBox.style.display = 'flex';
 
         // Auto-center the mouth gizmo on lower half of face
-        gizmo.x = canvas.width / 2;
-        gizmo.y = canvas.height * 0.65;
-        gizmo.w = canvas.width * 0.28;
-        gizmo.h = canvas.height * 0.08;
+        activeAv.gizmo.x = canvas.width / 2;
+        activeAv.gizmo.y = canvas.height * 0.65;
+        activeAv.gizmo.w = canvas.width * 0.28;
+        activeAv.gizmo.h = canvas.height * 0.06; // Tight default height to prevent skin capturing!
 
-        gizmoWidthSlider.value = gizmo.w;
-        gizmoHeightSlider.value = gizmo.h;
+        gizmoWidthSlider.value = activeAv.gizmo.w;
+        gizmoHeightSlider.value = activeAv.gizmo.h;
 
-        if (stage === 0) {
-          closedImg = captured;
-          stage = 1;
+        if (activeAv.stage === 0) {
+          activeAv.closedImg = captured;
+          activeAv.stage = 1;
           stepBanner.textContent = "🎯 Drag & scale the mouth guide over your CLOSED lips!";
           snapBtn.disabled = true;
           stopCamera();
           renderGizmoView();
-        } else if (stage === 2) {
-          openImg = captured;
-          stage = 3;
-          stepBanner.textContent = "🎯 Drag & scale the mouth guide over ONLY the dark open mouth/teeth!";
+        } else if (activeAv.stage === 2) {
+          activeAv.openImg = captured;
+          activeAv.stage = 3;
+          stepBanner.textContent = "🎯 Drag & scale guide tightly over ONLY the dark open mouth/teeth (avoid brown skin)!";
           snapBtn.disabled = true;
           stopCamera();
           renderGizmoView();
@@ -656,14 +774,14 @@
     }
 
     function renderGizmoView() {
-      const currentBg = stage === 1 ? closedImg : openImg;
+      const activeAv = avatars[currentAvatarIdx];
+      const currentBg = activeAv.stage === 1 ? activeAv.closedImg : activeAv.openImg;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(currentBg, 0, 0, canvas.width, canvas.height);
 
       ctx.save();
       ctx.beginPath();
-      // Smooth anatomical mouth curve (organic bezier lip path)
-      drawMouthPath(ctx, gizmo.x, gizmo.y, gizmo.w, gizmo.h);
+      drawMouthPath(ctx, activeAv.gizmo.x, activeAv.gizmo.y, activeAv.gizmo.w, activeAv.gizmo.h);
       ctx.closePath();
 
       ctx.fillStyle = 'rgba(236, 72, 153, 0.22)';
@@ -673,41 +791,37 @@
       ctx.lineWidth = Math.max(3, canvas.width * 0.007);
       ctx.stroke();
 
-      // Draw center anchor handle
+      // Anchor handle
       ctx.fillStyle = '#38bdf8';
       ctx.beginPath();
-      ctx.arc(gizmo.x, gizmo.y, 8, 0, Math.PI * 2);
+      ctx.arc(activeAv.gizmo.x, activeAv.gizmo.y, 8, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
 
-    // Mathematical smooth mouth bezier generator
     function drawMouthPath(c, cx, cy, w, h) {
       const hw = w / 2;
       const hh = h / 2;
-
-      // Start at left corner
       c.moveTo(cx - hw, cy);
-      // Top lip curve
       c.bezierCurveTo(cx - hw * 0.45, cy - hh, cx + hw * 0.45, cy - hh, cx + hw, cy);
-      // Bottom lip curve
       c.bezierCurveTo(cx + hw * 0.45, cy + hh, cx - hw * 0.45, cy + hh, cx - hw, cy);
     }
 
     function updateGizmoFromSliders() {
-      gizmo.w = parseFloat(gizmoWidthSlider.value);
-      gizmo.h = parseFloat(gizmoHeightSlider.value);
+      const activeAv = avatars[currentAvatarIdx];
+      activeAv.gizmo.w = parseFloat(gizmoWidthSlider.value);
+      activeAv.gizmo.h = parseFloat(gizmoHeightSlider.value);
       renderGizmoView();
     }
 
-    // Touch & Mouse Dragging for Gizmo
     function onPointerDown(e) {
-      if (stage !== 1 && stage !== 3) return;
+      const activeAv = avatars[currentAvatarIdx];
+      if (activeAv.stage !== 1 && activeAv.stage !== 3) return;
       e.preventDefault();
       const pt = getCanvasCoords(e);
-      const dx = pt.x - gizmo.x;
-      const dy = pt.y - gizmo.y;
-      if (Math.hypot(dx, dy) < gizmo.w * 0.7) {
+      const dx = pt.x - activeAv.gizmo.x;
+      const dy = pt.y - activeAv.gizmo.y;
+      if (Math.hypot(dx, dy) < activeAv.gizmo.w * 0.7) {
         isDraggingGizmo = true;
         dragOffset.x = dx;
         dragOffset.y = dy;
@@ -717,9 +831,10 @@
     function onPointerMove(e) {
       if (!isDraggingGizmo) return;
       e.preventDefault();
+      const activeAv = avatars[currentAvatarIdx];
       const pt = getCanvasCoords(e);
-      gizmo.x = Math.max(gizmo.w / 2, Math.min(canvas.width - gizmo.w / 2, pt.x - dragOffset.x));
-      gizmo.y = Math.max(gizmo.h / 2, Math.min(canvas.height - gizmo.h / 2, pt.y - dragOffset.y));
+      activeAv.gizmo.x = Math.max(activeAv.gizmo.w / 2, Math.min(canvas.width - activeAv.gizmo.w / 2, pt.x - dragOffset.x));
+      activeAv.gizmo.y = Math.max(activeAv.gizmo.h / 2, Math.min(canvas.height - activeAv.gizmo.h / 2, pt.y - dragOffset.y));
       renderGizmoView();
     }
 
@@ -736,21 +851,23 @@
     canvas.addEventListener('touchend', onPointerUp);
 
     function confirmGizmoStep() {
-      if (stage === 1) {
-        closedGizmoState = { ...gizmo };
-        baseLipCenter = { x: closedGizmoState.x, y: closedGizmoState.y };
-        baseLipWidth = closedGizmoState.w;
-        stage = 2;
+      const activeAv = avatars[currentAvatarIdx];
+
+      if (activeAv.stage === 1) {
+        activeAv.closedGizmoState = { ...activeAv.gizmo };
+        activeAv.baseLipCenter = { x: activeAv.closedGizmoState.x, y: activeAv.closedGizmoState.y };
+        activeAv.baseLipWidth = activeAv.closedGizmoState.w;
+        activeAv.stage = 2;
 
         gizmoBox.style.display = 'none';
         stepBanner.textContent = "Step 2: Snapshot face with mouth SLIGHTLY OPEN (keep head in same position)!";
         snapBtn.textContent = "Snapshot Open Face";
         snapBtn.disabled = true;
         toggleCamera();
-      } else if (stage === 3) {
-        openGizmoState = { ...gizmo };
-        buildFeatheredMouthPatchFromGizmo();
-        stage = 4;
+      } else if (activeAv.stage === 3) {
+        activeAv.openGizmoState = { ...activeAv.gizmo };
+        buildFeatheredMouthPatchFromGizmo(activeAv);
+        activeAv.stage = 4;
 
         gizmoBox.style.display = 'none';
         stepBanner.textContent = "Step 3: Tap 'Record Head Video' & gently look Left, Center, then Right with mouth resting closed!";
@@ -760,44 +877,44 @@
       }
     }
 
-    function buildFeatheredMouthPatchFromGizmo() {
+    function buildFeatheredMouthPatchFromGizmo(av) {
       const pad = 12;
-      const minX = Math.max(0, openGizmoState.x - (openGizmoState.w / 2) - pad);
-      const minY = Math.max(0, openGizmoState.y - (openGizmoState.h / 2) - pad);
-      const maxX = Math.min(canvas.width, openGizmoState.x + (openGizmoState.w / 2) + pad);
-      const maxY = Math.min(canvas.height, openGizmoState.y + (openGizmoState.h / 2) + pad);
+      const minX = Math.max(0, av.openGizmoState.x - (av.openGizmoState.w / 2) - pad);
+      const minY = Math.max(0, av.openGizmoState.y - (av.openGizmoState.h / 2) - pad);
+      const maxX = Math.min(canvas.width, av.openGizmoState.x + (av.openGizmoState.w / 2) + pad);
+      const maxY = Math.min(canvas.height, av.openGizmoState.y + (av.openGizmoState.h / 2) + pad);
 
       const w = maxX - minX;
       const h = maxY - minY;
 
-      patchBoundingBox = { x: minX, y: minY, width: w, height: h };
+      av.patchBoundingBox = { x: minX, y: minY, width: w, height: h };
 
-      mouthPatchCanvas = document.createElement('canvas');
-      mouthPatchCanvas.width = w;
-      mouthPatchCanvas.height = h;
-      const pctx = mouthPatchCanvas.getContext('2d');
+      av.mouthPatchCanvas = document.createElement('canvas');
+      av.mouthPatchCanvas.width = w;
+      av.mouthPatchCanvas.height = h;
+      const pctx = av.mouthPatchCanvas.getContext('2d');
 
-      const relCenterX = openGizmoState.x - minX;
-      const relCenterY = openGizmoState.y - minY;
+      const relCenterX = av.openGizmoState.x - minX;
+      const relCenterY = av.openGizmoState.y - minY;
 
       pctx.save();
       pctx.beginPath();
-      drawMouthPath(pctx, relCenterX, relCenterY, openGizmoState.w, openGizmoState.h);
+      drawMouthPath(pctx, relCenterX, relCenterY, av.openGizmoState.w, av.openGizmoState.h);
       pctx.closePath();
 
-      // Soft feathering purely at contour edge
       pctx.shadowColor = 'black';
       pctx.shadowBlur = 4;
       pctx.fillStyle = 'black';
       pctx.fill();
 
-      // Composite open mouth image
       pctx.globalCompositeOperation = 'source-in';
-      pctx.drawImage(openImg, -minX, -minY);
+      pctx.drawImage(av.openImg, -minX, -minY);
       pctx.restore();
     }
 
     function toggleHeadVideoRecording() {
+      const activeAv = avatars[currentAvatarIdx];
+
       if (!isRecordingHeadVid) {
         if (!stream) {
           alert("Open camera first!");
@@ -811,13 +928,15 @@
         };
 
         headMediaRecorder.onstop = () => {
-          headVideoBlob = new Blob(headVideoChunks, { type: 'video/webm' });
-          recordedHeadVideo.src = URL.createObjectURL(headVideoBlob);
+          activeAv.headVideoBlob = new Blob(headVideoChunks, { type: 'video/webm' });
+          activeAv.headVideoUrl = URL.createObjectURL(activeAv.headVideoBlob);
+          recordedHeadVideo.src = activeAv.headVideoUrl;
           recordedHeadVideo.play();
 
-          stage = 5;
-          stepBanner.textContent = "✅ Head-Turn Rig Ready! MediaPipe lip tracking initialized.";
-          snapBtn.textContent = "Rig Completed";
+          activeAv.stage = 5;
+          document.getElementById(`tab${currentAvatarIdx}`).classList.add('ready');
+          stepBanner.textContent = `✅ ${activeAv.name} rig ready! MediaPipe lip tracking initialized.`;
+          snapBtn.textContent = "Avatar Ready";
           snapBtn.disabled = true;
           stopCamera();
 
@@ -1046,26 +1165,32 @@
     }
 
     function checkReadyToGenerate() {
-      if (stage === 5 && headVideoBlob) {
+      const activeAv = avatars[currentAvatarIdx];
+      if (activeAv.stage === 5 && activeAv.headVideoBlob) {
         genBtn.disabled = false;
         const hasWords = Object.keys(labeledSoundboard).length > 0;
         if (hasWords) {
-          genBtn.textContent = `Generate Video (${Object.keys(labeledSoundboard).length} Labeled Words)`;
-          statusMsg.textContent = "Ready to synthesize head-turn video with labeled voice clips!";
+          genBtn.textContent = `Generate Video for ${activeAv.name} (${Object.keys(labeledSoundboard).length} Labeled Words)`;
+          statusMsg.textContent = `Ready to synthesize ${activeAv.name} with voice!`;
         } else {
-          genBtn.textContent = "Generate Video (Silent & Head-Turn Rig Ready)";
-          statusMsg.textContent = "Ready to render full-screen head-turn video puppet with tracked lips!";
+          genBtn.textContent = `Generate Video for ${activeAv.name} (Silent & Ready)`;
+          statusMsg.textContent = `Ready to render ${activeAv.name} (add audio in post)!`;
         }
+      } else {
+        genBtn.disabled = true;
+        genBtn.textContent = `Generate Video (Complete Step 1 For ${activeAv.name} First)`;
+        statusMsg.textContent = `Record head-turn video for ${activeAv.name} to enable rendering`;
       }
     }
 
     // SYNTHESIS & FULL-SCREEN RENDERING PIPELINE
     async function executeSynthesis() {
+      const activeAv = avatars[currentAvatarIdx];
       const scriptText = scriptInput.value.trim();
-      if (!scriptText || stage !== 5 || !headVideoBlob) return;
+      if (!scriptText || activeAv.stage !== 5 || !activeAv.headVideoBlob) return;
 
       genBtn.disabled = true;
-      statusMsg.textContent = "Tracking face landmarks & synthesizing full-screen video...";
+      statusMsg.textContent = `Rendering avatar: ${activeAv.name}...`;
       outPlaceholder.style.display = "block";
       outPlaceholder.textContent = "Rendering...";
       outVideo.style.display = "none";
@@ -1112,8 +1237,8 @@
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
         statusMsg.textContent = hasAudio 
-          ? "Video generated with smooth gizmo lipsync & synced voiceover!" 
-          : "Silent video generated! Import into your editor for voiceover.";
+          ? `Video generated for ${activeAv.name} with synced voiceover!` 
+          : `Silent video generated for ${activeAv.name}! Import into your editor for voiceover.`;
         genBtn.disabled = false;
         downloadBtn.disabled = false;
         outVideo.play();
@@ -1121,8 +1246,8 @@
 
       recorder.start();
 
-      const patchRelCenterX = openGizmoState.x - patchBoundingBox.x;
-      const patchRelCenterY = openGizmoState.y - patchBoundingBox.y;
+      const patchRelCenterX = activeAv.openGizmoState.x - activeAv.patchBoundingBox.x;
+      const patchRelCenterY = activeAv.openGizmoState.y - activeAv.patchBoundingBox.y;
 
       const wordsInScript = scriptText.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
       const availableKeys = Object.keys(labeledSoundboard);
@@ -1193,7 +1318,7 @@
 
       playNextWord(0);
 
-      // FULL-SCREEN RENDER LOOP
+      // FULL-SCREEN RENDER LOOP (WITH ZERO-REST CLAMPING)
       async function renderLoop() {
         if (!isRendering && currentVowelOpen < 0.02) return;
 
@@ -1205,16 +1330,16 @@
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 1. Draw full-screen base video
+        // 1. Draw full-screen base head-turn video
         if (recordedHeadVideo.readyState >= 2) {
           ctx.drawImage(recordedHeadVideo, 0, 0, canvas.width, canvas.height);
         } else {
-          ctx.drawImage(closedImg, 0, 0, canvas.width, canvas.height);
+          ctx.drawImage(activeAv.closedImg, 0, 0, canvas.width, canvas.height);
         }
 
         // 2. Track landmarks & calculate head angle
-        let trackedAnchorX = baseLipCenter.x;
-        let trackedAnchorY = baseLipCenter.y;
+        let trackedAnchorX = activeAv.baseLipCenter.x;
+        let trackedAnchorY = activeAv.baseLipCenter.y;
         let headTiltAngle = 0;
         let perspectiveScaleX = 1.0;
 
@@ -1236,14 +1361,14 @@
             (rightCorner.x - leftCorner.x) * canvas.width,
             (rightCorner.y - leftCorner.y) * canvas.height
           );
-          perspectiveScaleX = Math.min(1.0, Math.max(0.3, currentWidth / baseLipWidth));
+          perspectiveScaleX = Math.min(1.0, Math.max(0.3, currentWidth / activeAv.baseLipWidth));
         }
 
-        // 3. Composite clean feathered mouth patch from gizmo
-        if (currentVowelOpen > 0.04 && mouthPatchCanvas && latestLandmarks) {
+        // 3. Composite clean mouth patch with ZERO REST OPENING (pinches fully shut!)
+        if (currentVowelOpen > 0.04 && activeAv.mouthPatchCanvas && latestLandmarks) {
           ctx.save();
 
-          // CLIP MASK: Face silhouette prevents outside bleeding
+          // CLIP MASK: Face silhouette prevents cheek bleeding
           ctx.beginPath();
           FACE_OVAL_INDICES.forEach((idx, i) => {
             const pt = latestLandmarks[idx];
@@ -1258,17 +1383,18 @@
           ctx.translate(trackedAnchorX, trackedAnchorY);
           ctx.rotate(headTiltAngle);
 
-          const vScale = Math.min(0.85, 0.2 + currentVowelOpen * 0.65);
+          // ZERO REST OPENING: Scales from 0.0 to 0.8 max so lips pinch completely closed!
+          const vScale = Math.min(0.8, currentVowelOpen * 0.8);
           ctx.scale(perspectiveScaleX, vScale);
 
           ctx.globalAlpha = Math.min(1.0, currentVowelOpen * 1.5);
 
           ctx.drawImage(
-            mouthPatchCanvas,
+            activeAv.mouthPatchCanvas,
             -patchRelCenterX,
             -patchRelCenterY,
-            patchBoundingBox.width,
-            patchBoundingBox.height
+            activeAv.patchBoundingBox.width,
+            activeAv.patchBoundingBox.height
           );
 
           ctx.restore();
@@ -1281,9 +1407,10 @@
     }
 
     function downloadVid() {
+      const activeAv = avatars[currentAvatarIdx];
       const a = document.createElement('a');
       a.href = outVideo.src;
-      a.download = 'vofa-gizmo-headturn.webm';
+      a.download = `${activeAv.name.toLowerCase().replace(/\s+/g, '-')}-headturn.webm`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
