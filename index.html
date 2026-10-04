@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Vofa AI | Solid Morphing Jaw Engine</title>
+  <title>Vofa AI | Clean Feathered Mouth Rig</title>
 
   <!-- Lightweight MediaPipe Face Mesh Engine -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -310,12 +310,12 @@
 
   <header>
     <div class="brand">VOFA <span>AI</span></div>
-    <div class="badge">Solid Morph Rig</div>
+    <div class="badge">Clean Mouth Rig</div>
   </header>
 
   <div class="hero">
     <h1>You don't need AI for AI-generated videos!</h1>
-    <p>Solid anatomical mouth morphing on full-screen head turns without transparency ghosting.</p>
+    <p>Pure feathered inner-mouth blend without artificial outlines or black circles.</p>
   </div>
 
   <main>
@@ -357,7 +357,7 @@
 
       <div class="audio-card">
         <div class="row">
-          <button id="voiceRecBtn" onclick="toggleVoiceRecording()">🎙️ Record Master Voice (Optional)</button>
+          <button id="voiceRecBtn" onclick="toggleVoiceRecording()">🎙️️ Record Master Voice (Optional)</button>
           <button onclick="clearAudioData()" style="color: #f87171; flex: 0 0 110px;">Clear Audio</button>
         </div>
 
@@ -397,7 +397,7 @@
     <div class="panel">
       <h2>Step 3: Script & Render</h2>
       <p style="font-size: 0.8rem; color: var(--muted);">
-        Type your script below. The engine dynamically morphs the mouth slit cleanly without fading or disappearing!
+        Type your script below. The engine blends your natural feathered mouth opening with dynamic head tracking.
       </p>
       <textarea id="scriptInput">hello welcome to vofa ai this mouth stays glued to my face while my head turns</textarea>
 
@@ -697,6 +697,7 @@
       }
     }
 
+    // TIGHT FEATHERED EXTRACTION: NO ARTIFICIAL SHADOW OR OUTLINE RINGS
     function buildFeatheredMouthPatch() {
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       openMouthPath.forEach(p => {
@@ -730,11 +731,13 @@
       }
       pctx.closePath();
 
+      // Soft feather strictly at boundaries (no hard black outline!)
       pctx.shadowColor = 'black';
-      pctx.shadowBlur = 6;
+      pctx.shadowBlur = 4;
       pctx.fillStyle = 'black';
       pctx.fill();
 
+      // Composite original image pixels
       pctx.globalCompositeOperation = 'source-in';
       pctx.drawImage(openImg, -minX, -minY);
       pctx.restore();
@@ -1008,7 +1011,7 @@
       }
     }
 
-    // SYNTHESIS & FULL-SCREEN RENDERING PIPELINE WITH SOLID MORPHING JAW
+    // SYNTHESIS & FULL-SCREEN RENDERING PIPELINE (CLEAN BLEND)
     async function executeSynthesis() {
       const scriptText = scriptInput.value.trim();
       if (!scriptText || stage !== 5 || !headVideoBlob) return;
@@ -1061,7 +1064,7 @@
         outPlaceholder.style.display = "none";
         outVideo.style.display = "block";
         statusMsg.textContent = hasAudio 
-          ? "Video generated with solid morphing mouth & synced voiceover!" 
+          ? "Video generated with clean lipsync & synced voiceover!" 
           : "Silent video generated! Import into your editor for voiceover.";
         genBtn.disabled = false;
         downloadBtn.disabled = false;
@@ -1143,7 +1146,7 @@
 
       playNextWord(0);
 
-      // FULL-SCREEN RENDER LOOP WITH SOLID PHYSICAL JAW MORPH
+      // FULL-SCREEN RENDER LOOP: ZERO ARTIFICIAL BLACK OUTLINES
       async function renderLoop() {
         if (!isRendering && currentVowelOpen < 0.02) return;
 
@@ -1189,11 +1192,11 @@
           perspectiveScaleX = Math.min(1.0, Math.max(0.3, currentWidth / baseLipWidth));
         }
 
-        // 3. Composite mouth with 100% solid opacity and physical vertical scale morph
-        if (currentVowelOpen > 0.02 && mouthPatchCanvas && latestLandmarks) {
+        // 3. Composite purely the feathered mouth cutout (zero artificial black circles!)
+        if (currentVowelOpen > 0.04 && mouthPatchCanvas && latestLandmarks) {
           ctx.save();
 
-          // CLIP MASK: Face silhouette prevents floating outside head boundary
+          // CLIP MASK: Face silhouette prevents pixels from floating outside head boundary
           ctx.beginPath();
           FACE_OVAL_INDICES.forEach((idx, i) => {
             const pt = latestLandmarks[idx];
@@ -1208,20 +1211,14 @@
           ctx.translate(trackedAnchorX, trackedAnchorY);
           ctx.rotate(headTiltAngle);
 
-          // Physical vertical jaw morph (no fading ghost alpha)
-          const verticalScale = currentVowelOpen * 0.85;
-          ctx.scale(perspectiveScaleX, verticalScale);
+          // Smooth vertical scale based on vowel speech
+          const vScale = Math.min(0.85, 0.2 + currentVowelOpen * 0.65);
+          ctx.scale(perspectiveScaleX, vScale);
 
-          // 100% SOLID: Eliminates transparency blurring & double lips
-          ctx.globalAlpha = 1.0;
+          // Natural alpha blend without double-lip ghosting
+          ctx.globalAlpha = Math.min(1.0, currentVowelOpen * 1.5);
 
-          // Dark backing hides base closed lips underneath
-          ctx.fillStyle = '#0a0305';
-          ctx.beginPath();
-          ctx.ellipse(0, 0, (patchBoundingBox.width * 0.45), patchBoundingBox.height * 0.45, 0, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Draw crisp mouth cutout
+          // Draw the clean feathered mouth patch
           ctx.drawImage(
             mouthPatchCanvas,
             -patchRelCenterX,
@@ -1242,7 +1239,7 @@
     function downloadVid() {
       const a = document.createElement('a');
       a.href = outVideo.src;
-      a.download = 'vofa-headturn-render.webm';
+      a.download = 'vofa-clean-headturn.webm';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
